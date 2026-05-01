@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.idea/
+.vscode/
+.gradle/
+build/
+*.apk
+*.iml
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/local.properties

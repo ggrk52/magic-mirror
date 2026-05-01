@@ -1,0 +1,32 @@
+[
+  {
+    "id": "clock",
+    "title": "Clock",
+    "visible": true,
+    "refreshable": false
+  },
+  {
+    "id": "weather",
+    "title": "Weather",
+    "visible": true,
+    "refreshable": true
+  },
+  {
+    "id": "markets",
+    "title": "Markets",
+    "visible": true,
+    "refreshable": true
+  },
+  {
+    "id": "calendar",
+    "title": "Calendar",
+    "visible": true,
+    "refreshable": true
+  },
+  {
+    "id": "news",
+    "title": "News",
+    "visible": true,
+    "refreshable": true
+  }
+]

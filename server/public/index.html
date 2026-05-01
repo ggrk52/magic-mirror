@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Magic Mirror LAN</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <script>
+      window.__MIRROR_CONFIG__ = {
+        wsToken: "__MIRROR_WS_TOKEN__",
+      };
+    </script>
+
+    <main class="mirror" id="mirrorRoot">
+      <div class="mirror-glass" aria-hidden="true"></div>
+
+      <section class="gallery-screen" id="galleryScreen" aria-live="polite">
+        <div class="gallery-stage">
+          <img id="galleryImage" alt="" />
+        </div>
+        <div class="gallery-caption">
+          <p class="gallery-title" id="galleryTitle">Экран ожидания</p>
+          <p class="gallery-artist" id="galleryArtist">Галерея известных художников</p>
+        </div>
+      </section>
+
+      <section class="ar-screen" id="arScreen" aria-live="polite">
+        <video class="ar-video" id="arVideo" autoplay muted playsinline></video>
+        <div class="ar-shade" aria-hidden="true"></div>
+        <canvas class="ar-canvas" id="arCanvas" aria-hidden="true"></canvas>
+        <div class="ar-hud">
+          <p class="ar-kicker">AR примерка</p>
+          <p class="ar-tracking" id="arTracking">Ищем тело в кадре</p>
+        </div>
+        <p class="ar-message" id="arMessage">Камера запускается</p>
+        <div class="ar-controls" id="arControls">
+          <button type="button" data-garment="hoodie">Худи</button>
+          <button type="button" data-garment="sweatshirt">Свитшот</button>
+          <button type="button" data-garment="coat">Куртка</button>
+        </div>
+      </section>
+
+      <section class="module module-clock zone-top-left" data-module-id="clock">
+        <p class="date-line" id="dateLine">Пятница, 21 апреля 2017</p>
+        <div class="time-line">
+          <span class="time-main" id="timeMain">6:16</span>
+          <span class="time-seconds" id="timeSeconds">43</span>
+          <span class="time-period" id="timePeriod"></span>
+        </div>
+      </section>
+
+      <section class="module module-calendar zone-left" data-module-id="calendar">
+        <h2>События</h2>
+        <ol class="event-list" id="eventList">
+          <li>
+            <span class="event-name">Созвон по проекту</span>
+            <span class="event-time">Сегодня</span>
+          </li>
+          <li>
+            <span class="event-name">Обслуживание зеркала</span>
+            <span class="event-time">Завтра</span>
+          </li>
+          <li>
+            <span class="event-name">Обновление погоды</span>
+            <span class="event-time">Через 2 дня</span>
+          </li>
+          <li>
+            <span class="event-name">Режим выходных</span>
+            <span class="event-time">Суббота</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="module module-weather zone-top-right" data-module-id="weather">
+        <div class="weather-now">
+          <div class="weather-mark" aria-hidden="true">
+            <span></span>
+          </div>
+          <div>
+            <p class="weather-temp" id="weatherTemp">--<span>&deg;C</span></p>
+            <p class="weather-place" id="weatherPlace">Москва</p>
+          </div>
+        </div>
+        <ol class="forecast-list" id="forecastList">
+          <li><span>--</span><strong>--&deg;C</strong><em>--&deg;C</em></li>
+          <li><span>--</span><strong>--&deg;C</strong><em>--&deg;C</em></li>
+          <li><span>--</span><strong>--&deg;C</strong><em>--&deg;C</em></li>
+          <li><span>--</span><strong>--&deg;C</strong><em>--&deg;C</em></li>
+          <li><span>--</span><strong>--&deg;C</strong><em>--&deg;C</em></li>
+        </ol>
+      </section>
+
+      <section class="module module-markets zone-right" data-module-id="markets">
+        <h2>Курсы</h2>
+        <div class="market-group" id="fiatRates">
+          <div class="market-row">
+            <span>Доллар</span>
+            <strong>--</strong>
+            <em>USD</em>
+          </div>
+          <div class="market-row">
+            <span>Евро</span>
+            <strong>--</strong>
+            <em>EUR</em>
+          </div>
+          <div class="market-row">
+            <span>Юань</span>
+            <strong>--</strong>
+            <em>CNY</em>
+          </div>
+        </div>
+        <div class="market-group crypto" id="cryptoRates">
+          <div class="market-row">
+            <span>Bitcoin</span>
+            <strong>--</strong>
+            <em>BTC</em>
+          </div>
+          <div class="market-row">
+            <span>Ethereum</span>
+            <strong>--</strong>
+            <em>ETH</em>
+          </div>
+        </div>
+      </section>
+
+      <section class="module module-news zone-bottom" data-module-id="news">
+        <p class="news-headline" id="newsHeadline">
+          Magic Mirror в сети и ждёт обновления модулей
+        </p>
+      </section>
+
+      <aside class="mirror-status" id="connectionState">Подключение...</aside>
+      <aside class="mirror-meta" id="mirrorMeta">Ждём состояние сервера</aside>
+      <aside class="pairing-panel" id="pairingPanel" hidden>
+        <p>Подключить телефон</p>
+        <div class="pairing-qr" id="pairingQr" aria-label="QR-код подключения Android-контроллера"></div>
+        <span id="pairingHint">Открой приложение и нажми «Сканировать QR»</span>
+      </aside>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

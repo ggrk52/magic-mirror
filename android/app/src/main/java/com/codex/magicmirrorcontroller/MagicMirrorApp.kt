@@ -47,8 +47,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,10 +68,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -87,25 +93,94 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
+private val ForestBlack = Color(0xFF020806)
+private val DeepGreen = Color(0xFF06170F)
+private val PineGreen = Color(0xFF0B2A1B)
+private val GlassGreen = Color(0xFF0A1D13)
+private val DarkPurple = Color(0xFF281037)
+private val VelvetPurple = Color(0xFF5A2B70)
+private val SoftGreenWhite = Color(0xFFEAF4EA)
+private val MutedSage = Color(0xFFA5B8A8)
+
 private val mirrorColorScheme = darkColorScheme(
-    primary = Color(0xFFBDEBFF),
-    secondary = Color(0xFFA7FFD7),
-    tertiary = Color(0xFFFFD59A),
-    background = Color(0xFF020408),
-    surface = Color(0xFF101723),
-    surfaceVariant = Color(0xFF182434),
-    onSurface = Color(0xFFF6FBFF),
-    onSurfaceVariant = Color(0xFFB5C2CF),
+    primary = VelvetPurple,
+    onPrimary = SoftGreenWhite,
+    secondary = MutedSage,
+    tertiary = Color(0xFF6F4A86),
+    background = ForestBlack,
+    surface = GlassGreen,
+    surfaceVariant = PineGreen,
+    onSurface = SoftGreenWhite,
+    onSurfaceVariant = MutedSage.copy(alpha = 0.82f),
+    outline = VelvetPurple.copy(alpha = 0.38f),
 )
 
 private val glassShape = RoundedCornerShape(30.dp)
-private val glassBorder = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
+private val glassBorder = BorderStroke(1.dp, VelvetPurple.copy(alpha = 0.36f))
+private val cakraFontFamily = FontFamily(Font(R.font.cakra_normal))
+private val mirrorFontFamily = cakraFontFamily
+private val mirrorDisplayFamily = cakraFontFamily
+private val moduleTitleRu = mapOf(
+    "clock" to "Часы",
+    "weather" to "Погода",
+    "markets" to "Курсы",
+    "calendar" to "События",
+    "news" to "Новости",
+)
+
+private val mirrorTypography = Typography(
+    displaySmall = TextStyle(
+        fontFamily = mirrorDisplayFamily,
+        fontSize = 38.sp,
+        lineHeight = 42.sp,
+        fontWeight = FontWeight.Light,
+        letterSpacing = (-0.7f).sp,
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = mirrorDisplayFamily,
+        fontSize = 26.sp,
+        lineHeight = 31.sp,
+        fontWeight = FontWeight.Light,
+        letterSpacing = (-0.2f).sp,
+    ),
+    titleLarge = TextStyle(
+        fontFamily = mirrorFontFamily,
+        fontSize = 20.sp,
+        lineHeight = 26.sp,
+        fontWeight = FontWeight.SemiBold,
+    ),
+    titleMedium = TextStyle(
+        fontFamily = mirrorFontFamily,
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+        fontWeight = FontWeight.SemiBold,
+    ),
+    bodyLarge = TextStyle(
+        fontFamily = mirrorFontFamily,
+        fontSize = 16.sp,
+        lineHeight = 23.sp,
+        fontWeight = FontWeight.Normal,
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = mirrorFontFamily,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontWeight = FontWeight.Normal,
+    ),
+    labelLarge = TextStyle(
+        fontFamily = mirrorFontFamily,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.4.sp,
+    ),
+)
 
 @Composable
 fun MagicMirrorApp(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    MaterialTheme(colorScheme = mirrorColorScheme) {
+    MaterialTheme(colorScheme = mirrorColorScheme, typography = mirrorTypography) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
@@ -176,9 +251,9 @@ private fun MirrorBackground() {
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF0C1521),
-                        Color(0xFF03060B),
-                        Color(0xFF000000),
+                        DeepGreen,
+                        ForestBlack,
+                        Color.Black,
                     ),
                 ),
             ),
@@ -188,9 +263,9 @@ private fun MirrorBackground() {
                 .fillMaxSize()
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF26445E).copy(alpha = 0.55f), Color.Transparent),
-                        center = Offset(140f, 120f),
-                        radius = 680f,
+                        colors = listOf(PineGreen.copy(alpha = 0.78f), Color.Transparent),
+                        center = Offset(110f, 160f),
+                        radius = 760f,
                     ),
                 ),
         )
@@ -199,12 +274,32 @@ private fun MirrorBackground() {
                 .fillMaxSize()
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF5A3B1B).copy(alpha = 0.2f), Color.Transparent),
-                        center = Offset(900f, 1400f),
-                        radius = 920f,
+                        colors = listOf(DarkPurple.copy(alpha = 0.36f), Color.Transparent),
+                        center = Offset(900f, 1280f),
+                        radius = 980f,
                     ),
                 ),
         )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawLine(
+                color = SoftGreenWhite.copy(alpha = 0.04f),
+                start = Offset(-size.width * 0.1f, size.height * 0.18f),
+                end = Offset(size.width * 1.1f, size.height * 0.38f),
+                strokeWidth = 1.dp.toPx(),
+            )
+            drawLine(
+                color = VelvetPurple.copy(alpha = 0.1f),
+                start = Offset(size.width * 0.18f, -size.height * 0.08f),
+                end = Offset(size.width * 0.86f, size.height * 1.08f),
+                strokeWidth = 1.dp.toPx(),
+            )
+            drawCircle(
+                color = VelvetPurple.copy(alpha = 0.13f),
+                radius = size.minDimension * 0.72f,
+                center = Offset(size.width * 0.5f, size.height * 1.04f),
+                style = Stroke(width = 1.dp.toPx()),
+            )
+        }
     }
 }
 
@@ -238,9 +333,9 @@ private fun ConnectionScreen(
     ) {
         item {
             HeaderBlock(
-                kicker = "MAGIC MIRROR",
+                kicker = "ЗЕРКАЛО",
                 title = "Коннектор",
-                subtitle = "Поиск сервера и подключение по QR.",
+                subtitle = "Поиск, QR, управление.",
             )
         }
 
@@ -272,7 +367,7 @@ private fun ConnectionScreen(
                         onClick = onStartDiscovery,
                         enabled = !state.isBusy,
                     ) {
-                        Text("Искать")
+                        Text("Поиск")
                     }
                     OutlinedButton(
                         onClick = onStopDiscovery,
@@ -304,7 +399,7 @@ private fun ConnectionScreen(
         item {
             ActionFoldout(
                 title = "Ручной ввод",
-                subtitle = "Host, порт, токен",
+                subtitle = "Адрес, порт, токен",
                 expanded = state.manualExpanded,
                 onToggle = onToggleManual,
             ) {
@@ -321,8 +416,8 @@ private fun ConnectionScreen(
 
         item {
             ActionFoldout(
-                title = "Setup",
-                subtitle = "Wi‑Fi настройка Raspberry/Linux",
+                title = "Настройка",
+                subtitle = "Настройка Wi‑Fi на Raspberry/Linux",
                 expanded = state.setupExpanded,
                 onToggle = onToggleSetup,
             ) {
@@ -347,12 +442,12 @@ private fun ConnectionScreen(
 
 @Composable
 private fun HeaderBlock(kicker: String, title: String, subtitle: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(
             text = kicker,
-            color = MaterialTheme.colorScheme.secondary,
+            color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
         )
         Text(
             text = title,
@@ -369,12 +464,19 @@ private fun HeaderBlock(kicker: String, title: String, subtitle: String) {
 
 @Composable
 private fun GlassPanel(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = glassShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-        border = glassBorder,
-        shadowElevation = 18.dp,
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(glassShape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF0D2A1A).copy(alpha = 0.88f),
+                        Color(0xFF04100B).copy(alpha = 0.76f),
+                    ),
+                ),
+            )
+            .border(glassBorder, glassShape),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -405,10 +507,14 @@ private fun RadarOrb(active: Boolean) {
 
     Canvas(
         modifier = Modifier
-            .size(86.dp)
+            .size(112.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.035f))
-            .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape),
+            .background(
+                Brush.radialGradient(
+                    listOf(VelvetPurple.copy(alpha = 0.18f), PineGreen.copy(alpha = 0.18f), Color.Transparent),
+                ),
+            )
+            .border(1.dp, VelvetPurple.copy(alpha = 0.42f), CircleShape),
     ) {
         val radius = size.minDimension / 2f
         val centerPoint = center
@@ -419,24 +525,45 @@ private fun RadarOrb(active: Boolean) {
         )
 
         drawCircle(
-            color = Color(0xFFBDEBFF).copy(alpha = if (active) 0.18f else 0.08f),
+            color = PineGreen.copy(alpha = 0.38f),
+            radius = radius * 0.92f,
+        )
+        drawCircle(
+            color = VelvetPurple.copy(alpha = if (active) 0.3f else 0.12f),
             radius = radius * pulse,
             style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
         )
         drawCircle(
-            color = Color.White.copy(alpha = 0.12f),
+            color = SoftGreenWhite.copy(alpha = 0.12f),
             radius = radius * 0.64f,
             style = Stroke(width = 1.dp.toPx()),
         )
+        drawCircle(
+            color = VelvetPurple.copy(alpha = if (active) 0.52f else 0.22f),
+            radius = radius * 0.84f,
+            style = Stroke(width = 1.dp.toPx()),
+        )
         drawLine(
-            color = Color(0xFFA7FFD7).copy(alpha = if (active) 0.72f else 0.26f),
+            color = SoftGreenWhite.copy(alpha = 0.08f),
+            start = Offset(centerPoint.x - radius * 0.72f, centerPoint.y),
+            end = Offset(centerPoint.x + radius * 0.72f, centerPoint.y),
+            strokeWidth = 1.dp.toPx(),
+        )
+        drawLine(
+            color = SoftGreenWhite.copy(alpha = 0.08f),
+            start = Offset(centerPoint.x, centerPoint.y - radius * 0.72f),
+            end = Offset(centerPoint.x, centerPoint.y + radius * 0.72f),
+            strokeWidth = 1.dp.toPx(),
+        )
+        drawLine(
+            color = VelvetPurple.copy(alpha = if (active) 0.92f else 0.42f),
             start = centerPoint,
             end = sweepEnd,
             strokeWidth = 2.dp.toPx(),
             cap = StrokeCap.Round,
         )
         drawCircle(
-            color = Color(0xFFA7FFD7).copy(alpha = if (active) 0.92f else 0.42f),
+            color = VelvetPurple.copy(alpha = if (active) 0.98f else 0.52f),
             radius = 6.dp.toPx(),
             center = centerPoint,
         )
@@ -457,6 +584,12 @@ private fun MirrorCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
+                    text = if (mirror.setupMode) "НАСТРОЙКА" else "В СЕТИ",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Text(
                     text = mirror.name,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
@@ -470,7 +603,7 @@ private fun MirrorCard(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Button(onClick = onClick, enabled = !isBusy) {
-                Text(if (mirror.setupMode) "Setup" else "Подключить")
+                Text(if (mirror.setupMode) "Настроить" else "Подключить")
             }
         }
     }
@@ -480,7 +613,7 @@ private fun MirrorCard(
 private fun EmptyDiscoveryCard(onOpenQr: () -> Unit) {
     GlassPanel {
         Text(
-            text = "Сервер не найден",
+            text = "Зеркало не найдено",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
@@ -508,9 +641,17 @@ private fun ActionFoldout(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(text = subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
-            Text(text = if (expanded) "Свернуть" else "Открыть", color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = if (expanded) "Свернуть" else "Открыть",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
 
         AnimatedVisibility(visible = expanded) {
@@ -536,7 +677,7 @@ private fun ManualForm(
         value = formState.host,
         onValueChange = onHostChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("Host, IP или URL") },
+        label = { Text("Адрес, IP или URL") },
         singleLine = true,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -572,7 +713,7 @@ private fun SetupForm(
     onSubmit: () -> Unit,
 ) {
     Text(
-        text = "MIRROR_SETUP_MODE=1",
+        text = "Режим настройки: MIRROR_SETUP_MODE=1",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -580,7 +721,7 @@ private fun SetupForm(
             value = formState.host,
             onValueChange = onHostChange,
             modifier = Modifier.weight(0.62f),
-            label = { Text("Setup host") },
+            label = { Text("Адрес настройки") },
             singleLine = true,
         )
         OutlinedTextField(
@@ -595,7 +736,7 @@ private fun SetupForm(
         value = formState.ssid,
         onValueChange = onSsidChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("Wi‑Fi SSID") },
+        label = { Text("Имя Wi‑Fi") },
         singleLine = true,
     )
     OutlinedTextField(
@@ -642,7 +783,7 @@ private fun ControlScreen(
             HeaderBlock(
                 kicker = state.endpointLabel,
                 title = "Пульт",
-                subtitle = "Экран и модули.",
+                subtitle = "Экран, режимы, модули.",
             )
         }
 
@@ -652,19 +793,10 @@ private fun ControlScreen(
                 isBusy = state.isBusy,
                 onDisplayAction = onDisplayAction,
                 onDisplayModeChange = onDisplayModeChange,
-                onRefreshAll = onRefreshAll,
             )
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(onClick = onRefresh, enabled = !state.isBusy) {
-                    Text("Обновить")
-                }
-                OutlinedButton(onClick = onDisconnect, enabled = !state.isBusy) {
-                    Text("Сменить зеркало")
-                }
-            }
             MessageLine(message = state.message, busy = state.isBusy)
         }
 
@@ -673,6 +805,16 @@ private fun ControlScreen(
                 module = module,
                 isBusy = state.isBusy,
                 onToggle = { onModuleVisibilityChange(module, it) },
+            )
+        }
+
+        item {
+            ServiceActionsCard(
+                isBusy = state.isBusy,
+                onRefresh = onRefresh,
+                onDisconnect = onDisconnect,
+                onReload = { onDisplayAction("reload") },
+                onRefreshAll = onRefreshAll,
             )
         }
     }
@@ -684,14 +826,13 @@ private fun StatusCard(
     isBusy: Boolean,
     onDisplayAction: (String) -> Unit,
     onDisplayModeChange: (String) -> Unit,
-    onRefreshAll: () -> Unit,
 ) {
     GlassPanel {
         Text(
             text = when {
                 mirrorState.displayState == "off" -> "Экран выключен"
                 mirrorState.displayMode == "gallery" -> "Картины"
-                mirrorState.displayMode == "ar" -> "AR-примерка активна"
+                mirrorState.displayMode == "ar" -> "Примерка активна"
                 else -> "Зеркало активно"
             },
             style = MaterialTheme.typography.headlineSmall,
@@ -704,9 +845,6 @@ private fun StatusCard(
             }
             Button(onClick = { onDisplayAction("off") }, enabled = !isBusy) {
                 Text("Выкл")
-            }
-            OutlinedButton(onClick = { onDisplayAction("reload") }, enabled = !isBusy) {
-                Text("Reload")
             }
         }
 
@@ -724,15 +862,11 @@ private fun StatusCard(
                 onClick = { onDisplayModeChange("gallery") },
             )
             ModeButton(
-                label = "AR",
+                label = "Примерка",
                 active = mirrorState.displayMode == "ar",
                 enabled = !isBusy,
                 onClick = { onDisplayModeChange("ar") },
             )
-        }
-
-        OutlinedButton(onClick = onRefreshAll, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
-            Text("Обновить все модули")
         }
     }
 }
@@ -740,15 +874,15 @@ private fun StatusCard(
 @Composable
 private fun ModeButton(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val container = if (active) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     } else {
-        Color.Transparent
+        Color.White.copy(alpha = 0.025f)
     }
 
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = container,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (active) 0.36f else 0.14f)),
+        border = BorderStroke(1.dp, VelvetPurple.copy(alpha = if (active) 0.6f else 0.24f)),
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     ) {
         Text(
@@ -766,11 +900,13 @@ private fun ModuleCard(
     isBusy: Boolean,
     onToggle: (Boolean) -> Unit,
 ) {
+    val title = moduleTitleRu[module.id] ?: module.title
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        border = BorderStroke(1.dp, VelvetPurple.copy(alpha = 0.18f)),
     ) {
         Row(
             modifier = Modifier
@@ -779,25 +915,57 @@ private fun ModuleCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = module.title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            OutlinedButton(
-                onClick = { onToggle(!module.visible) },
-                enabled = !isBusy,
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    if (module.visible) {
-                        "Скрыть"
-                    } else {
-                        "Показать"
-                    },
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                Text(
+                    text = if (module.visible) "вкл" else "выкл",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked = module.visible,
+                onCheckedChange = { onToggle(it) },
+                enabled = !isBusy,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ServiceActionsCard(
+    isBusy: Boolean,
+    onRefresh: () -> Unit,
+    onDisconnect: () -> Unit,
+    onReload: () -> Unit,
+    onRefreshAll: () -> Unit,
+) {
+    GlassPanel {
+        Text(
+            text = "Сервис",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.ExtraBold,
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onRefresh, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+                Text("Обновить")
+            }
+            OutlinedButton(onClick = onDisconnect, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+                Text("Сменить зеркало")
+            }
+            OutlinedButton(onClick = onReload, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+                Text("Перезагрузить экран")
+            }
+            OutlinedButton(onClick = onRefreshAll, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+                Text("Обновить модули")
             }
         }
     }
@@ -821,7 +989,7 @@ private fun MessageLine(message: String?, busy: Boolean) {
         }
         Text(
             text = message ?: "Работаем...",
-            color = MaterialTheme.colorScheme.tertiary,
+            color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.bodyMedium,
         )
     }
@@ -854,14 +1022,14 @@ private fun QrScannerOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.92f))
+            .background(ForestBlack.copy(alpha = 0.94f))
             .padding(22.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(32.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
             border = glassBorder,
         ) {
             Column(
@@ -874,7 +1042,7 @@ private fun QrScannerOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column {
-                        Text("QR-pairing", style = MaterialTheme.typography.headlineSmall)
+                        Text("QR-подключение", style = MaterialTheme.typography.headlineSmall)
                         Text("Сканируй код на экране зеркала", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onClose) {

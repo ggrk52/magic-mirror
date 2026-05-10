@@ -41,6 +41,14 @@ data class MainUiState(
     val message: String? = null,
 )
 
+private val moduleTitleRu = mapOf(
+    "clock" to "Часы",
+    "weather" to "Погода",
+    "markets" to "Курсы",
+    "calendar" to "События",
+    "news" to "Новости",
+)
+
 class MainViewModel(
     private val api: MagicMirrorApi,
     private val repository: ServerConfigRepository,
@@ -87,7 +95,7 @@ class MainViewModel(
     }
 
     fun startDiscovery() {
-        _uiState.update { it.copy(isScanning = true, message = "Ищем Magic Mirror рядом...") }
+        _uiState.update { it.copy(isScanning = true, message = "Ищем зеркало рядом...") }
 
         discovery.start(
             onMirrorFound = { mirror ->
@@ -211,7 +219,7 @@ class MainViewModel(
         val payload = parsePairingPayload(rawValue)
 
         if (payload == null) {
-            _uiState.update { it.copy(message = "Это не QR-код Magic Mirror.") }
+            _uiState.update { it.copy(message = "Это не QR-код зеркала.") }
             return
         }
 
@@ -226,7 +234,7 @@ class MainViewModel(
                     qrScannerOpen = false,
                     manualExpanded = true,
                     formState = it.formState.copy(token = payload.token, port = payload.port.toString()),
-                    message = "Токен сохранён, но в QR не было адреса. Введи host вручную.",
+                    message = "Токен сохранён, но в QR не было адреса. Введи адрес вручную.",
                 )
             }
             tokenStore.saveToken(payload.token)
@@ -255,7 +263,7 @@ class MainViewModel(
 
         if (endpoint == null || setup.ssid.isBlank() || token.length < 8) {
             _uiState.update {
-                it.copy(message = "Для setup нужны адрес setup-сервера, Wi-Fi SSID и токен минимум 8 символов.")
+                it.copy(message = "Для режима настройки нужны адрес сервера, имя Wi-Fi и токен минимум 8 символов.")
             }
             return
         }
@@ -283,7 +291,7 @@ class MainViewModel(
                 _uiState.update {
                     it.copy(
                         isBusy = false,
-                        message = error.message ?: "Не удалось передать setup-настройки.",
+                        message = error.message ?: "Не удалось передать настройки.",
                     )
                 }
             }
@@ -312,7 +320,7 @@ class MainViewModel(
         runServerAction(
             successMessage = when (mode) {
                 "gallery" -> "Экран ожидания с картинами включён."
-                "ar" -> "AR-примерка включена."
+                "ar" -> "Примерка включена."
                 else -> "Виджеты зеркала включены."
             },
         ) { config ->
@@ -321,11 +329,13 @@ class MainViewModel(
     }
 
     fun setModuleVisibility(module: MirrorModule, visible: Boolean) {
+        val title = moduleTitleRu[module.id] ?: module.title
+
         runServerAction(
             successMessage = if (visible) {
-                "${module.title} теперь виден."
+                "$title включён."
             } else {
-                "${module.title} скрыт."
+                "$title выключен."
             },
         ) { config ->
             api.setModuleVisibility(config, module.id, visible)

@@ -1,31 +1,31 @@
 [
   {
     "id": "clock",
-    "title": "Clock",
+    "title": "Часы",
     "visible": true,
     "refreshable": false
   },
   {
     "id": "weather",
-    "title": "Weather",
+    "title": "Погода",
     "visible": true,
     "refreshable": true
   },
   {
     "id": "markets",
-    "title": "Markets",
+    "title": "Курсы",
     "visible": true,
     "refreshable": true
   },
   {
     "id": "calendar",
-    "title": "Calendar",
+    "title": "События",
     "visible": true,
     "refreshable": true
   },
   {
     "id": "news",
-    "title": "News",
+    "title": "Новости",
     "visible": true,
     "refreshable": true
   }

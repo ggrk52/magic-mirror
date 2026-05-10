@@ -1,12 +1,33 @@
+@font-face {
+  font-family: "Cakra";
+  src:
+    url("/fonts/Cakra-Normal.woff2") format("woff2"),
+    url("/fonts/Cakra-Normal.woff") format("woff"),
+    url("/fonts/Cakra-Normal.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300 800;
+}
+
 :root {
   color-scheme: dark;
-  --mirror-black: #000;
-  --mirror-white: rgba(255, 255, 255, 0.94);
-  --mirror-soft: rgba(255, 255, 255, 0.72);
-  --mirror-faint: rgba(255, 255, 255, 0.46);
-  --mirror-hairline: rgba(255, 255, 255, 0.34);
-  --status-ok: rgba(187, 255, 214, 0.82);
-  --status-warn: rgba(255, 226, 166, 0.82);
+  --void-black: #000;
+  --deep-plum: #000;
+  --royal-purple: #0a0a0a;
+  --plum-glow: rgba(255, 255, 255, 0.08);
+  --mustard-gold: rgba(255, 255, 255, 0.9);
+  --mustard-soft: rgba(255, 255, 255, 0.62);
+  --mustard-faint: rgba(255, 255, 255, 0.16);
+  --warm-white: rgba(255, 255, 255, 0.96);
+  --warm-soft: rgba(255, 255, 255, 0.72);
+  --muted-lavender: rgba(255, 255, 255, 0.46);
+  --lavender-faint: rgba(255, 255, 255, 0.26);
+  --hairline: rgba(255, 255, 255, 0.28);
+  --glass: rgba(0, 0, 0, 0.38);
+  --status-ok: rgba(255, 255, 255, 0.72);
+  --status-warn: rgba(255, 255, 255, 0.72);
+  --font-ui: "Cakra", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Cakra", "Arial Narrow", system-ui, sans-serif;
 }
 
 * {
@@ -21,11 +42,11 @@ body {
 body {
   margin: 0;
   overflow: hidden;
-  font-family: "Helvetica Neue", "Avenir Next", "Segoe UI Light", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-weight: 300;
-  letter-spacing: 0;
-  color: var(--mirror-white);
-  background: var(--mirror-black);
+  letter-spacing: -0.01em;
+  color: var(--warm-white);
+  background: var(--void-black);
 }
 
 ol,
@@ -40,8 +61,7 @@ h2 {
   width: 100vw;
   isolation: isolate;
   background:
-    linear-gradient(115deg, transparent 0 28%, rgba(255, 255, 255, 0.038) 34%, transparent 46%),
-    radial-gradient(ellipse at 52% 58%, rgba(255, 255, 255, 0.07), transparent 28%),
+    radial-gradient(circle at 50% 56%, rgba(255, 255, 255, 0.035), transparent 28%),
     linear-gradient(180deg, #050505 0%, #000 58%, #030303 100%);
 }
 
@@ -51,15 +71,16 @@ h2 {
   inset: 0;
   z-index: -2;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05), transparent 18% 82%, rgba(255, 255, 255, 0.035)),
+    linear-gradient(118deg, transparent 0 36%, rgba(249, 242, 230, 0.045) 43%, transparent 51%),
+    linear-gradient(243deg, transparent 0 68%, rgba(255, 255, 255, 0.026) 75%, transparent 84%),
     repeating-linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.018) 0,
-      rgba(255, 255, 255, 0.018) 1px,
+      rgba(249, 242, 230, 0.018) 0,
+      rgba(249, 242, 230, 0.018) 1px,
       transparent 1px,
-      transparent 6px
+      transparent 8px
     );
-  opacity: 0.45;
+  opacity: 0.62;
   pointer-events: none;
 }
 
@@ -69,8 +90,8 @@ h2 {
   inset: 0;
   z-index: 5;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 18% 78%, rgba(0, 0, 0, 0.42)),
-    radial-gradient(circle at center, transparent 42%, rgba(0, 0, 0, 0.58) 100%);
+    radial-gradient(circle at center, transparent 38%, rgba(0, 0, 0, 0.62) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 18% 72%, rgba(0, 0, 0, 0.62));
   pointer-events: none;
 }
 
@@ -79,10 +100,24 @@ h2 {
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(72deg, transparent 0 44%, rgba(255, 255, 255, 0.045) 48%, transparent 56%),
-    linear-gradient(252deg, transparent 0 65%, rgba(255, 255, 255, 0.028) 71%, transparent 78%);
+    linear-gradient(72deg, transparent 0 44%, rgba(249, 242, 230, 0.055) 48%, transparent 56%),
+    linear-gradient(252deg, transparent 0 65%, rgba(255, 255, 255, 0.026) 72%, transparent 80%),
+    radial-gradient(circle at 50% 48%, rgba(249, 242, 230, 0.035), transparent 33%);
   mix-blend-mode: screen;
-  opacity: 0.58;
+  opacity: 0.68;
+  animation: mirror-shimmer 12s ease-in-out infinite alternate;
+}
+
+@keyframes mirror-shimmer {
+  from {
+    opacity: 0.48;
+    transform: translate3d(-0.6vw, 0, 0);
+  }
+
+  to {
+    opacity: 0.78;
+    transform: translate3d(0.8vw, -0.4vh, 0);
+  }
 }
 
 .gallery-screen {
@@ -117,8 +152,8 @@ h2 {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 32%, rgba(0, 0, 0, 0.72)),
-    radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.42));
+    linear-gradient(180deg, rgba(5, 1, 8, 0.2), transparent 34%, rgba(5, 1, 8, 0.82)),
+    radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.48));
   pointer-events: none;
 }
 
@@ -128,18 +163,27 @@ h2 {
   left: clamp(24px, 4vw, 62px);
   bottom: clamp(42px, 7vh, 86px);
   max-width: min(52vw, 720px);
-  text-shadow: 0 0 20px rgba(0, 0, 0, 0.88);
+  padding: 16px 20px 16px 18px;
+  border-left: 2px solid var(--mustard-gold);
+  border-radius: 0 22px 22px 0;
+  background: linear-gradient(90deg, rgba(8, 2, 12, 0.7), rgba(8, 2, 12, 0.12));
+  text-shadow: 0 0 22px rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(8px);
 }
 
 .gallery-title {
-  font-size: clamp(1.05rem, 1.8vw, 1.8rem);
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 1.9vw, 1.95rem);
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .gallery-artist {
   margin-top: 6px;
-  color: var(--mirror-faint);
-  font-size: clamp(0.84rem, 1vw, 1.05rem);
+  color: var(--mustard-soft);
+  font-size: clamp(0.78rem, 1vw, 1rem);
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -179,8 +223,8 @@ h2 {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.16), transparent 22%, rgba(0, 0, 0, 0.48)),
-    radial-gradient(circle at center, transparent 44%, rgba(0, 0, 0, 0.38));
+    radial-gradient(circle at center, transparent 44%, rgba(5, 1, 8, 0.54)),
+    linear-gradient(180deg, rgba(5, 1, 8, 0.18), transparent 22%, rgba(5, 1, 8, 0.56));
   pointer-events: none;
 }
 
@@ -198,24 +242,24 @@ h2 {
   left: clamp(22px, 4vw, 62px);
   max-width: min(46vw, 560px);
   padding: 14px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 22px;
-  background: rgba(0, 0, 0, 0.28);
-  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--hairline);
+  border-radius: 24px;
+  background: var(--glass);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.54), 0 0 44px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
 }
 
 .ar-kicker {
-  color: var(--mirror-white);
-  font-size: clamp(0.76rem, 1vw, 0.95rem);
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  color: var(--mustard-gold);
+  font-size: clamp(0.74rem, 1vw, 0.92rem);
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .ar-tracking {
   margin-top: 5px;
-  color: var(--mirror-soft);
+  color: var(--warm-soft);
   font-size: clamp(0.92rem, 1.3vw, 1.22rem);
 }
 
@@ -223,9 +267,9 @@ h2 {
   position: absolute;
   left: 50%;
   top: 50%;
-  color: var(--mirror-soft);
+  color: var(--warm-soft);
   font-size: clamp(1.2rem, 2vw, 2rem);
-  text-shadow: 0 0 24px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 0 26px rgba(0, 0, 0, 0.95);
   transform: translate(-50%, -50%);
 }
 
@@ -243,17 +287,19 @@ h2 {
 }
 
 .ar-controls button {
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid var(--hairline);
   border-radius: 999px;
-  padding: 10px 15px;
-  color: var(--mirror-soft);
-  background: rgba(0, 0, 0, 0.32);
+  padding: 10px 16px;
+  color: var(--warm-soft);
+  background: rgba(9, 2, 13, 0.46);
   font: inherit;
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.05);
 }
 
 .ar-controls button.active {
-  color: var(--mirror-white);
-  border-color: rgba(255, 255, 255, 0.68);
+  color: var(--void-black);
+  border-color: var(--mustard-gold);
+  background: var(--mustard-gold);
 }
 
 .ar-mode .ar-screen {
@@ -271,7 +317,7 @@ h2 {
 .module {
   position: absolute;
   max-width: min(36vw, 460px);
-  text-shadow: 0 0 18px rgba(255, 255, 255, 0.22), 0 2px 18px rgba(0, 0, 0, 0.78);
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.14), 0 2px 20px rgba(0, 0, 0, 0.82);
   transition: opacity 260ms ease, transform 260ms ease, filter 260ms ease;
 }
 
@@ -315,33 +361,41 @@ h2 {
 
 .date-line {
   margin-bottom: 2px;
-  font-size: clamp(1.15rem, 2.2vw, 2.15rem);
+  color: var(--warm-soft);
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 2vw, 2rem);
   line-height: 1.06;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .time-line {
   display: flex;
   align-items: flex-start;
-  gap: 4px;
-  line-height: 0.88;
+  gap: 5px;
+  font-family: var(--font-display);
+  line-height: 0.86;
   white-space: nowrap;
 }
 
 .time-main {
-  font-size: clamp(3.6rem, 7.4vw, 7.8rem);
+  color: var(--warm-white);
+  font-size: clamp(3.8rem, 7.8vw, 8.3rem);
   font-weight: 500;
+  letter-spacing: -0.05em;
 }
 
 .time-seconds {
   padding-top: clamp(0.25rem, 0.8vw, 0.72rem);
-  font-size: clamp(1rem, 1.7vw, 1.8rem);
-  color: var(--mirror-soft);
+  color: var(--mustard-soft);
+  font-size: clamp(1rem, 1.8vw, 1.9rem);
+  font-weight: 500;
 }
 
 .time-period {
   align-self: flex-end;
   padding-bottom: clamp(0.3rem, 0.75vw, 0.8rem);
+  color: var(--muted-lavender);
   font-size: clamp(1.8rem, 3.2vw, 3.6rem);
   font-weight: 400;
 }
@@ -349,11 +403,12 @@ h2 {
 .module-markets h2,
 .module-calendar h2 {
   margin-bottom: 10px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid var(--mirror-hairline);
-  font-size: clamp(0.72rem, 1vw, 0.95rem);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--mustard-gold);
+  font-size: clamp(0.7rem, 0.95vw, 0.92rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -383,13 +438,14 @@ h2 {
 
 .event-name {
   overflow: hidden;
+  color: var(--warm-white);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .event-time {
-  color: var(--mirror-faint);
+  color: var(--muted-lavender);
   font-size: 0.9em;
 }
 
@@ -405,9 +461,10 @@ h2 {
   position: relative;
   width: clamp(48px, 5vw, 68px);
   height: clamp(34px, 3.6vw, 48px);
-  border: 4px solid var(--mirror-white);
+  border: 4px solid var(--mustard-gold);
   border-top-color: transparent;
   border-radius: 999px;
+  filter: drop-shadow(0 0 16px var(--mustard-faint));
 }
 
 .weather-mark::before,
@@ -416,7 +473,7 @@ h2 {
   content: "";
   position: absolute;
   display: block;
-  background: var(--mirror-white);
+  background: var(--mustard-gold);
   border-radius: 50%;
 }
 
@@ -442,21 +499,26 @@ h2 {
 }
 
 .weather-temp {
-  font-size: clamp(3.2rem, 5.5vw, 6rem);
+  font-family: var(--font-display);
+  font-size: clamp(3.2rem, 5.7vw, 6.2rem);
   line-height: 0.92;
-  font-weight: 300;
+  font-weight: 400;
+  letter-spacing: -0.04em;
 }
 
 .weather-temp span {
   margin-left: 6px;
-  font-size: 0.35em;
+  color: var(--mustard-soft);
+  font-size: 0.34em;
   vertical-align: super;
 }
 
 .weather-place {
   margin-top: 6px;
-  color: var(--mirror-faint);
+  color: var(--muted-lavender);
   font-size: clamp(0.74rem, 1vw, 1rem);
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -466,20 +528,20 @@ h2 {
   min-width: 220px;
   margin-left: auto;
   padding-top: 10px;
-  border-top: 1px solid var(--mirror-hairline);
+  border-top: 1px solid var(--hairline);
 }
 
 .forecast-list li {
   display: grid;
   grid-template-columns: 1fr 3.5rem 3.5rem;
   gap: 10px;
-  color: var(--mirror-faint);
+  color: var(--muted-lavender);
   font-size: clamp(0.78rem, 1vw, 1rem);
 }
 
 .forecast-list strong,
 .forecast-list em {
-  color: var(--mirror-soft);
+  color: var(--warm-soft);
   font-style: normal;
   font-weight: 500;
   text-align: right;
@@ -494,7 +556,7 @@ h2 {
 .market-group + .market-group {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid var(--mirror-hairline);
+  border-top: 1px solid var(--hairline);
 }
 
 .market-row {
@@ -507,35 +569,40 @@ h2 {
 
 .market-row span {
   overflow: hidden;
-  color: var(--mirror-soft);
+  color: var(--warm-soft);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .market-row strong {
-  font-size: 1.08em;
+  color: var(--warm-white);
+  font-family: var(--font-display);
+  font-size: 1.14em;
   font-weight: 600;
   text-align: right;
 }
 
 .market-row em {
-  color: var(--mirror-faint);
+  color: var(--muted-lavender);
   font-style: normal;
   text-align: right;
 }
 
 .market-row em.up {
-  color: rgba(190, 255, 217, 0.76);
+  color: rgba(178, 247, 207, 0.8);
 }
 
 .market-row em.down {
-  color: rgba(255, 190, 190, 0.76);
+  color: rgba(255, 182, 182, 0.78);
 }
 
 .news-headline {
-  font-size: clamp(0.95rem, 1.8vw, 1.65rem);
+  color: var(--warm-white);
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 1.85vw, 1.72rem);
   font-weight: 700;
-  line-height: 1.18;
+  line-height: 1.16;
+  text-shadow: 0 0 22px rgba(255, 255, 255, 0.12), 0 2px 20px rgba(0, 0, 0, 0.9);
 }
 
 .mirror-status,
@@ -544,11 +611,12 @@ h2 {
   z-index: 8;
   right: clamp(16px, 2vw, 28px);
   color: var(--status-warn);
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  opacity: 0.42;
-  text-shadow: 0 0 10px rgba(0, 0, 0, 0.88);
+  opacity: 0.5;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.95);
 }
 
 .mirror-status {
@@ -570,14 +638,14 @@ h2 {
   z-index: 9;
   left: clamp(18px, 3vw, 34px);
   bottom: clamp(18px, 3vh, 34px);
-  width: clamp(240px, 18vw, 320px);
+  width: clamp(250px, 18vw, 330px);
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 22px;
-  color: var(--mirror-soft);
-  background: rgba(0, 0, 0, 0.34);
-  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(10px);
+  border: 1px solid var(--hairline);
+  border-radius: 24px;
+  color: var(--warm-soft);
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.86), rgba(0, 0, 0, 0.64));
+  box-shadow: 0 22px 86px rgba(0, 0, 0, 0.58), 0 0 52px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
   text-align: center;
 }
 
@@ -586,11 +654,11 @@ h2 {
 }
 
 .pairing-panel p {
-  margin-bottom: 9px;
-  color: var(--mirror-white);
+  margin-bottom: 10px;
+  color: var(--mustard-gold);
   font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -600,6 +668,7 @@ h2 {
   display: grid;
   place-items: center;
   padding: 10px;
+  border: 4px solid #fff;
   border-radius: 18px;
   background: #fff;
   overflow: hidden;
@@ -620,7 +689,7 @@ h2 {
 
 .pairing-panel span {
   display: block;
-  margin-top: 8px;
+  margin-top: 9px;
   font-size: 0.72rem;
   line-height: 1.25;
 }
@@ -645,7 +714,7 @@ h2 {
 }
 
 .display-off::after {
-  background: rgba(0, 0, 0, 0.88);
+  background: rgba(0, 0, 0, 0.9);
 }
 
 @media (max-width: 820px) {
@@ -707,7 +776,6 @@ h2 {
 
   .zone-top-right,
   .zone-right,
-  .zone-bottom,
   .zone-bottom {
     left: auto;
     right: auto;
@@ -753,7 +821,7 @@ h2 {
   .pairing-panel {
     left: 16px;
     right: auto;
-    width: min(72vw, 300px);
+    width: min(72vw, 310px);
   }
 }
 

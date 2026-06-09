@@ -638,7 +638,7 @@ test("layout edit mode toggles and broadcasts over websocket", async () => {
   }
 });
 
-test("mirror mode endpoint toggles gallery and AR fitting modes", async () => {
+test("mirror mode endpoint toggles gallery mode", async () => {
   const runtime = await startTestServer({ port: 0, host: "127.0.0.1", token: "mode-token" });
   const baseUrl = `http://127.0.0.1:${runtime.address.port}`;
 
@@ -653,21 +653,11 @@ test("mirror mode endpoint toggles gallery and AR fitting modes", async () => {
     const galleryState = await galleryResponse.json();
     assert.equal(galleryState.displayMode, "gallery");
 
-    const arResponse = await fetch(`${baseUrl}/api/mirror/mode`, {
-      method: "POST",
-      headers: authHeaders(runtime.token),
-      body: JSON.stringify({ mode: "ar" }),
-    });
-
-    assert.equal(arResponse.status, 200);
-    const arState = await arResponse.json();
-    assert.equal(arState.displayMode, "ar");
-
     const stateResponse = await fetch(`${baseUrl}/api/mirror/state`, {
       headers: authHeaders(runtime.token),
     });
     const latestState = await stateResponse.json();
-    assert.equal(latestState.displayMode, "ar");
+    assert.equal(latestState.displayMode, "gallery");
   } finally {
     await runtime.close();
   }

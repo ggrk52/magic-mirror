@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import defaultModules from "../config/defaultModules.json" with { type: "json" };
 import {
   defaultModuleLayout,
@@ -46,14 +48,37 @@ function cloneModule(module, initialLayout) {
 }
 
 export class MirrorStore {
-  constructor(initialModules = defaultModules, { initialLayout = {}, layoutStorage = null } = {}) {
-    this.displayState = "on";
-    this.displayMode = "mirror";
+  constructor(initialModules = defaultModules, { initialLayout = {}, initialState = {}, layoutStorage = null, stateStorage = null } = {}) {
+    this.displayState = initialState.displayState ?? "on";
+    this.displayMode = initialState.displayMode ?? "mirror";
     this.layoutEditMode = false;
     this.lastReloadedAt = null;
-    this.modules = initialModules.map((module) => cloneModule(module, initialLayout));
+    
+    // Apply initial visibility
+    const initialVisibility = initialState.modulesVisibility ?? {};
+    this.modules = initialModules.map((module) => {
+      const cloned = cloneModule(module, initialLayout);
+      if (initialVisibility[cloned.id] !== undefined) {
+        cloned.visible = Boolean(initialVisibility[cloned.id]);
+      }
+      return cloned;
+    });
+
     this.photoOverlay = null;
+    this.notification = null;
     this.layoutStorage = layoutStorage;
+    this.stateStorage = stateStorage;
+  }
+
+  async saveState() {
+    if (this.stateStorage) {
+      const stateToSave = {
+        displayState: this.displayState,
+        displayMode: this.displayMode,
+        modulesVisibility: Object.fromEntries(this.modules.map(m => [m.id, m.visible]))
+      };
+      await this.stateStorage.save(stateToSave).catch(e => console.error("Failed to save state:", e));
+    }
   }
 
   getState() {
@@ -63,6 +88,7 @@ export class MirrorStore {
       layoutEditMode: this.layoutEditMode,
       lastReloadedAt: this.lastReloadedAt,
       photoOverlay: photoMeta(this.photoOverlay),
+      notification: this.notification,
       modules: this.modules.map((module) => ({
         ...module,
         layout: cloneLayout(module.layout),
@@ -85,16 +111,27 @@ export class MirrorStore {
     }
 
     this.displayState = action;
+    this.saveState();
+    return this.getState();
+  }
+
+  setDisplayState(state) {
+    if (state !== "on" && state !== "off") {
+      throw new Error("INVALID_DISPLAY_STATE");
+    }
+    this.displayState = state;
+    this.saveState();
     return this.getState();
   }
 
   setDisplayMode(mode) {
-    if (!["mirror", "gallery", "ar"].includes(mode)) {
+    if (mode !== "mirror" && mode !== "gallery") {
       throw new Error("INVALID_DISPLAY_MODE");
     }
 
     this.photoOverlay = null;
     this.displayMode = mode;
+    this.saveState();
     return this.getState();
   }
 
@@ -211,6 +248,7 @@ export class MirrorStore {
 
     module.visible = visible;
     module.lastUpdatedAt = nowIso();
+    this.saveState();
 
     return this.getState();
   }
@@ -240,4 +278,50 @@ export class MirrorStore {
 
     return this.getState();
   }
+
+  // Notification toast
+  setNotification({ text, durationSeconds = 15 }) {
+    if (typeof text !== "string" || !text.trim()) {
+      throw new Error("INVALID_NOTIFICATION_TEXT");
+    }
+    const dur = Math.max(1, Math.min(300, Math.floor(Number(durationSeconds) || 15)));
+    this.notification = {
+      text: text.trim(),
+      durationSeconds: dur,
+      createdAt: nowIso(),
+    };
+    return this.getState();
+  }
+
+  clearNotification() {
+    this.notification = null;
+    return this.getState();
+  }
+}
+
+export function createFileStateStorage(filePath) {
+  return {
+    async load() {
+      try {
+        const payload = JSON.parse(await readFile(filePath, "utf8"));
+        return payload?.state && typeof payload.state === "object" ? payload.state : {};
+      } catch (error) {
+        return {};
+      }
+    },
+    async save(state) {
+      await mkdir(dirname(filePath), { recursive: true });
+      const body = JSON.stringify(
+        {
+          version: 1,
+          state,
+        },
+        null,
+        2,
+      );
+      const tempPath = `${filePath}.tmp`;
+      await writeFile(tempPath, body, "utf8");
+      await rename(tempPath, filePath);
+    },
+  };
 }

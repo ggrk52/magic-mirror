@@ -1,4 +1,3 @@
-import { initAr, startArCamera, stopArCamera, setArGarment } from "./ar-fitter.js";
 import { startClock } from "./components/clock.js";
 import { startWeatherPolling } from "./components/weather.js";
 import { startMarketsPolling, renderMarkets } from "./components/markets.js";
@@ -13,11 +12,6 @@ const photoTimer = document.querySelector("#photoTimer");
 const galleryImage = document.querySelector("#galleryImage");
 const galleryTitle = document.querySelector("#galleryTitle");
 const galleryArtist = document.querySelector("#galleryArtist");
-const arVideo = document.querySelector("#arVideo");
-const arCanvas = document.querySelector("#arCanvas");
-const arTracking = document.querySelector("#arTracking");
-const arMessage = document.querySelector("#arMessage");
-const arControls = document.querySelector("#arControls");
 const connectionState = document.querySelector("#connectionState");
 const mirrorMeta = document.querySelector("#mirrorMeta");
 const pairingPanel = document.querySelector("#pairingPanel");
@@ -27,50 +21,16 @@ const displayBlackout = document.querySelector("#displayBlackout");
 
 // Configurations
 const wsToken = window.__MIRROR_CONFIG__?.wsToken ?? "";
-const mirrorDesigns = ["noir", "standby", "signal", "atelier"];
-const mirrorFonts = ["nizhegorodsky", "cakra", "tiny5", "unbounded"];
 
 const artworks = [
-  {
-    title: "The Bedroom",
-    artist: "Винсент ван Гог",
-    imageId: "6644829f-f292-c5c4-a73c-0356a6fdbf0d",
-  },
-  {
-    title: "Self-Portrait",
-    artist: "Винсент ван Гог",
-    imageId: "47c5bcb8-62ef-e5d7-55e7-f5121f409a30",
-  },
-  {
-    title: "Water Lilies",
-    artist: "Клод Моне",
-    imageId: "3c27b499-af56-f0d5-93b5-a7f2f1ad5813",
-  },
-  {
-    title: "Arrival of the Normandy Train, Gare Saint-Lazare",
-    artist: "Клод Моне",
-    imageId: "0f1cc0e0-e42e-be16-3f71-2022da38cb93",
-  },
-  {
-    title: "Two Sisters (On the Terrace)",
-    artist: "Пьер-Огюст Ренуар",
-    imageId: "3a608f55-d76e-fa96-d0b1-0789fbc48f1e",
-  },
-  {
-    title: "Woman at the Piano",
-    artist: "Пьер-Огюст Ренуар",
-    imageId: "8f06717c-9ede-f22b-d13b-327a50c22f9c",
-  },
-  {
-    title: "The Basket of Apples",
-    artist: "Поль Сезанн",
-    imageId: "52ac8996-3460-cf71-cb42-5c4d0aa29b74",
-  },
-  {
-    title: "The Bay of Marseille, Seen from L'Estaque",
-    artist: "Поль Сезанн",
-    imageId: "d4ca6321-8656-3d3f-a362-2ee297b2b813",
-  },
+  { title: "The Bedroom", artist: "Винсент ван Гог", file: "bedroom.jpg" },
+  { title: "Self-Portrait", artist: "Винсент ван Гог", file: "self-portrait.jpg" },
+  { title: "Water Lilies", artist: "Клод Моне", file: "water-lilies.jpg" },
+  { title: "Arrival of the Normandy Train", artist: "Клод Моне", file: "normandy-train.jpg" },
+  { title: "Two Sisters (On the Terrace)", artist: "Пьер-Огюст Ренуар", file: "two-sisters.jpg" },
+  { title: "Woman at the Piano", artist: "Пьер-Огюст Ренуар", file: "woman-piano.jpg" },
+  { title: "The Basket of Apples", artist: "Поль Сезанн", file: "basket-apples.jpg" },
+  { title: "The Bay of Marseille", artist: "Поль Сезанн", file: "marseille-bay.jpg" },
 ];
 
 let currentArtworkIndex = -1;
@@ -167,81 +127,9 @@ function observeModuleFrames() {
   }
 }
 
-// Design and Font Applying
-function safeReadStorage(key) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch (error) {
-    return null;
-  }
-}
-
-function safeWriteStorage(key, value) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch (error) {
-    // Local storage not available
-  }
-}
-
-function normalizeMirrorDesign(value) {
-  return mirrorDesigns.includes(value) ? value : "signal";
-}
-
-function applyMirrorDesign(design) {
-  const normalizedDesign = normalizeMirrorDesign(design);
-  mirrorRoot.dataset.design = normalizedDesign;
-  document.documentElement.dataset.mirrorDesign = normalizedDesign;
-  safeWriteStorage("mirror-design", normalizedDesign);
-  scheduleAllModuleFits();
-}
-
-function initialMirrorDesign() {
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get("design");
-  if (fromUrl) {
-    return normalizeMirrorDesign(fromUrl);
-  }
-  return normalizeMirrorDesign(safeReadStorage("mirror-design"));
-}
-
-function normalizeMirrorFont(value) {
-  return mirrorFonts.includes(value) ? value : "nizhegorodsky";
-}
-
-function applyMirrorFont(font) {
-  const normalizedFont = normalizeMirrorFont(font);
-  mirrorRoot.dataset.font = normalizedFont;
-  document.documentElement.dataset.mirrorFont = normalizedFont;
-  safeWriteStorage("mirror-font", normalizedFont);
-  scheduleAllModuleFits();
-}
-
-function initialMirrorFont() {
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get("font");
-  if (fromUrl) {
-    return normalizeMirrorFont(fromUrl);
-  }
-  return normalizeMirrorFont(safeReadStorage("mirror-font"));
-}
-
-function cycleMirrorDesign() {
-  const currentIndex = mirrorDesigns.indexOf(mirrorRoot.dataset.design);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % mirrorDesigns.length;
-  applyMirrorDesign(mirrorDesigns[nextIndex]);
-}
-
-function cycleMirrorFont() {
-  const currentIndex = mirrorFonts.indexOf(mirrorRoot.dataset.font);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % mirrorFonts.length;
-  applyMirrorFont(mirrorFonts[nextIndex]);
-}
-
-// Artwork Display
-function artworkImageUrl(imageId) {
-  return `https://www.artic.edu/iiif/2/${imageId}/full/1400,/0/default.jpg`;
-}
+// Artwork Display — local offline gallery with crossfade
+const galleryImageB = document.querySelector("#galleryImageB");
+let galleryActiveSlot = "a";
 
 function showRandomArtwork() {
   if (artworks.length === 0) {
@@ -255,8 +143,24 @@ function showRandomArtwork() {
 
   currentArtworkIndex = nextIndex;
   const artwork = artworks[currentArtworkIndex];
-  galleryImage.src = artworkImageUrl(artwork.imageId);
-  galleryImage.alt = `${artwork.title}, ${artwork.artist}`;
+  const src = `/gallery/${artwork.file}`;
+  const alt = `${artwork.title}, ${artwork.artist}`;
+
+  // Crossfade: load into the hidden slot, then swap
+  if (galleryImageB) {
+    const incoming = galleryActiveSlot === "a" ? galleryImageB : galleryImage;
+    const outgoing = galleryActiveSlot === "a" ? galleryImage : galleryImageB;
+
+    incoming.src = src;
+    incoming.alt = alt;
+    incoming.classList.add("gallery-img-active");
+    outgoing.classList.remove("gallery-img-active");
+    galleryActiveSlot = galleryActiveSlot === "a" ? "b" : "a";
+  } else {
+    galleryImage.src = src;
+    galleryImage.alt = alt;
+  }
+
   galleryTitle.textContent = artwork.title;
   galleryArtist.textContent = artwork.artist;
 }
@@ -384,6 +288,31 @@ function setModuleLayout(state) {
   }
 }
 
+// Notification toast
+const toastContainer = document.querySelector("#toastContainer");
+let activeToastTimer = null;
+
+function renderNotification(notification) {
+  if (!toastContainer) return;
+
+  if (!notification) {
+    toastContainer.classList.remove("toast-visible");
+    if (activeToastTimer) { clearTimeout(activeToastTimer); activeToastTimer = null; }
+    return;
+  }
+
+  const toastText = toastContainer.querySelector(".toast-text");
+  if (toastText) toastText.textContent = notification.text ?? "";
+  toastContainer.classList.add("toast-visible");
+
+  if (activeToastTimer) clearTimeout(activeToastTimer);
+  const duration = (notification.durationSeconds ?? 15) * 1000;
+  activeToastTimer = setTimeout(() => {
+    toastContainer.classList.remove("toast-visible");
+    activeToastTimer = null;
+  }, duration);
+}
+
 function renderState(state) {
   const displayMode = state.displayMode ?? "mirror";
   const photoOverlay = state.photoOverlay ?? null;
@@ -396,19 +325,15 @@ function renderState(state) {
     displayBlackout.hidden = !displayOff;
   }
   mirrorRoot.classList.toggle("gallery-mode", displayMode === "gallery");
-  mirrorRoot.classList.toggle("ar-mode", displayMode === "ar");
   renderPhonePhoto(photoOverlay);
   setModuleLayout(state);
   setModuleVisibility(state);
 
+  // Notification toast
+  renderNotification(state.notification ?? null);
+
   if (!photoOverlay && displayMode === "gallery" && currentArtworkIndex === -1) {
     showRandomArtwork();
-  }
-
-  if (!photoOverlay && displayMode === "ar") {
-    startArCamera();
-  } else {
-    stopArCamera();
   }
 
   const visibleCount = state.modules.filter((module) => module.visible).length;
@@ -417,9 +342,7 @@ function renderState(state) {
       ? "фото с телефона"
       : displayMode === "gallery"
       ? "экран ожидания"
-      : displayMode === "ar"
-        ? "AR примерка"
-        : "зеркало";
+      : "зеркало";
   mirrorMeta.textContent = `${modeLabel} - видно модулей: ${visibleCount}/${state.modules.length} - ${formatMetaTime(
     state.lastReloadedAt,
   )}`;
@@ -482,34 +405,6 @@ pairingPanel.hidden = true;
 loadPairingQr();
 showRandomArtwork();
 
-initAr({
-  video: arVideo,
-  canvas: arCanvas,
-  tracking: arTracking,
-  message: arMessage,
-  controls: arControls,
-});
-setArGarment("hoodie");
-
-arControls.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-garment]");
-  if (!button) {
-    return;
-  }
-  setArGarment(button.dataset.garment);
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key.toLowerCase() === "d" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-    cycleMirrorDesign();
-  }
-  if (event.key.toLowerCase() === "f" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-    cycleMirrorFont();
-  }
-});
-
-applyMirrorDesign(initialMirrorDesign());
-applyMirrorFont(initialMirrorFont());
 observeModuleFrames();
 scheduleAllModuleFits();
 

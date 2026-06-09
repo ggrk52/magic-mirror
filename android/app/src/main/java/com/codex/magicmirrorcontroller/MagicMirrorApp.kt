@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -82,6 +84,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -110,6 +113,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import coil.compose.AsyncImage
 import kotlin.math.roundToInt
 import java.util.concurrent.Executors
 
@@ -232,6 +236,7 @@ fun MagicMirrorApp(viewModel: MainViewModel) {
                             onPickPhoto = { photoPickerLauncher.launch("image/*") },
                             onClearPhoto = viewModel::clearPhoto,
                             onRefreshAll = viewModel::refreshAllModules,
+                            onUploadFromUrl = viewModel::uploadPhotoFromUrl,
                         )
                     } else {
                         ConnectionScreen(
@@ -1010,6 +1015,7 @@ private fun ControlScreen(
     onPickPhoto: () -> Unit,
     onClearPhoto: () -> Unit,
     onRefreshAll: () -> Unit,
+    onUploadFromUrl: (String) -> Unit,
 ) {
     val mirrorState = state.mirrorState ?: return
 
@@ -1062,13 +1068,16 @@ private fun ControlScreen(
         }
 
         item {
-            PhotoUploadCard(
+            GalleryCarousel(
                 durationMinutes = state.photoDurationMinutes,
                 photoOverlay = mirrorState.photoOverlay,
                 isBusy = state.isBusy,
+                serverHost = state.formState.host,
+                serverPort = state.formState.port,
                 onDurationChange = onPhotoDurationChange,
                 onPickPhoto = onPickPhoto,
                 onClearPhoto = onClearPhoto,
+                onSelectServerImage = onUploadFromUrl
             )
         }
 
@@ -1799,6 +1808,141 @@ private fun QrCameraPreview(
             cameraProvider?.unbindAll()
             scanner.close()
             executor.shutdown()
+        }
+    }
+}
+
+@Composable
+private fun GalleryCarousel(
+    durationMinutes: String,
+    photoOverlay: MirrorPhotoOverlay?,
+    isBusy: Boolean,
+    serverHost: String,
+    serverPort: String,
+    onDurationChange: (String) -> Unit,
+    onPickPhoto: () -> Unit,
+    onClearPhoto: () -> Unit,
+    onSelectServerImage: (String) -> Unit,
+) {
+    val serverUrl = "http://$serverHost:$serverPort"
+    val galleryImages = listOf(
+        "$serverUrl/gallery/bedroom.jpg",
+        "$serverUrl/gallery/self-portrait.jpg",
+        "$serverUrl/gallery/water-lilies.jpg",
+        "$serverUrl/gallery/normandy-train.jpg",
+        "$serverUrl/gallery/two-sisters.jpg",
+        "$serverUrl/gallery/woman-piano.jpg",
+        "$serverUrl/gallery/basket-apples.jpg",
+        "$serverUrl/gallery/marseille-bay.jpg"
+    )
+
+    GlassPanel {
+        Text(
+            text = "Картины на зеркало",
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.ExtraBold,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = durationMinutes,
+                onValueChange = onDurationChange,
+                modifier = Modifier.width(96.dp),
+                label = { Text("мин") },
+                singleLine = true,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(galleryImages) { imageUrl ->
+                GalleryCard(
+                    imageUrl = imageUrl,
+                    enabled = !isBusy,
+                    onClick = {
+                        onSelectServerImage(imageUrl)
+                    }
+                )
+            }
+
+            item {
+                AddPhotoCard(
+                    enabled = !isBusy,
+                    onClick = onPickPhoto
+                )
+            }
+        }
+
+        if (photoOverlay != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "показывается",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(onClick = onClearPhoto, enabled = !isBusy) {
+                    Text("Убрать")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GalleryCard(imageUrl: String, enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(140.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(0.85f),
+        color = Color(0xFF1E1E24)
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "Gallery Image",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+private fun AddPhotoCard(enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(140.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(0.85f),
+        color = Color(0xFF1E1E24)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "+",
+                    color = Color.White,
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.Light,
+                    modifier = Modifier.offset(y = (-4).dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("С телефона", color = Color.White, fontSize = 13.sp)
+            }
         }
     }
 }

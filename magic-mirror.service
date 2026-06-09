@@ -1,0 +1,14 @@
+[Unit]
+Description=Magic Mirror Orange Pi Server
+After=network.target NetworkManager.service
+
+[Service]
+Type=simple
+User=%u
+WorkingDirectory=/home/%u/magic-mirror-orange-pi
+ExecStart=/usr/bin/node server/src/index.js
+Restart=on-failure
+EnvironmentFile=/home/%u/magic-mirror-orange-pi/.env
+
+[Install]
+WantedBy=multi-user.target

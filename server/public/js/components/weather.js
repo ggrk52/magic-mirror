@@ -40,8 +40,23 @@ const weatherCodeLabels = new Map([
   [99, "гроза с градом"],
 ]);
 
+// Map WMO weather codes to inline SVG symbol IDs
+function weatherCodeIcon(code) {
+  if (code === 0 || code === 1) return "#wi-sun";
+  if (code === 2) return "#wi-partly";
+  if (code === 3) return "#wi-cloud";
+  if (code === 45 || code === 48) return "#wi-fog";
+  if (code >= 51 && code <= 67) return "#wi-rain";
+  if (code >= 71 && code <= 77) return "#wi-snow";
+  if (code >= 80 && code <= 82) return "#wi-rain";
+  if (code >= 85 && code <= 86) return "#wi-snow";
+  if (code >= 95) return "#wi-storm";
+  return "#wi-cloud";
+}
+
 let weatherTemp = null;
 let weatherPlace = null;
+let weatherIcon = null;
 let forecastList = null;
 
 function formatTemperature(value) {
@@ -74,6 +89,7 @@ function weatherCodeLabel(code) {
 function renderWeather(weather, onRender) {
   if (!weatherTemp) weatherTemp = document.querySelector("#weatherTemp");
   if (!weatherPlace) weatherPlace = document.querySelector("#weatherPlace");
+  if (!weatherIcon) weatherIcon = document.querySelector("#weatherIcon");
   if (!forecastList) forecastList = document.querySelector("#forecastList");
 
   if (!weatherTemp || !weatherPlace || !forecastList) return;
@@ -84,6 +100,15 @@ function renderWeather(weather, onRender) {
 
   weatherTemp.innerHTML = `${formatTemperature(currentTemperature)}<span>&deg;C</span>`;
   weatherPlace.textContent = `Москва · ${weatherCodeLabel(currentCode)}`;
+
+  // Update weather icon SVG
+  if (weatherIcon) {
+    const use = weatherIcon.querySelector("use");
+    if (use) {
+      use.setAttribute("href", weatherCodeIcon(currentCode));
+    }
+  }
+
   forecastList.replaceChildren();
 
   for (let index = 0; index < Math.min(daily.time?.length ?? 0, 5); index += 1) {

@@ -277,6 +277,7 @@ export function createApp({
     ["/api/modules/layout", ["POST"]],
     ["/api/modules/layout/reset", ["POST"]],
     ["/api/modules/refresh-all", ["POST"]],
+    ["/api/mirror/notification", ["POST", "DELETE"]],
   ]);
   const pairingStatus = {
     controllerConnected: false,
@@ -763,6 +764,27 @@ export function createApp({
 
     if (request.method === "POST" && pathname === "/api/modules/refresh-all") {
       const state = store.refreshAll();
+      json(response, 200, state);
+      broadcastState();
+      return;
+    }
+    if (request.method === "POST" && pathname === "/api/mirror/notification") {
+      const body = await readJsonBody(request);
+      try {
+        const state = store.setNotification(body);
+        json(response, 200, state);
+        broadcastState();
+      } catch (error) {
+        json(response, 400, {
+          error: error.message,
+          message: "Notification text is required. Duration 1-300 seconds.",
+        });
+      }
+      return;
+    }
+
+    if (request.method === "DELETE" && pathname === "/api/mirror/notification") {
+      const state = store.clearNotification();
       json(response, 200, state);
       broadcastState();
       return;

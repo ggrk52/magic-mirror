@@ -560,6 +560,61 @@ class MainViewModel(
         }
     }
 
+    fun uploadPhotoFromUrl(urlStr: String) {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
+            return
+        }
+
+        val durationMinutes = _uiState.value.photoDurationMinutes.toIntOrNull()?.coerceIn(1, 60)
+        if (durationMinutes == null) {
+            _uiState.update { it.copy(message = "Укажи время показа от 1 до 60 минут.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Загружаем и готовим фото...") }
+
+            try {
+                val updatedState = withContext(Dispatchers.IO) {
+                    val stream = java.net.URL(urlStr).openStream()
+                    val bitmap = BitmapFactory.decodeStream(stream)
+                    val scaled = scaleBitmapIfNeeded(bitmap)
+                    val compressed = compressJpegUnderLimit(scaled)
+                    
+                    if (scaled !== bitmap) {
+                        scaled.recycle()
+                    }
+                    bitmap.recycle()
+
+                    api.uploadPhoto(
+                        config = config,
+                        imageBytes = compressed,
+                        mimeType = "image/jpeg",
+                        durationSeconds = durationMinutes * 60,
+                    )
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        isConnected = true,
+                        mirrorState = updatedState,
+                        message = "Фото отправлено на $durationMinutes мин.",
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        message = error.message ?: "Не удалось отправить фото.",
+                    )
+                }
+            }
+        }
+    }
+
     fun clearPhoto() {
         runServerAction("Фото убрано с зеркала.") { config ->
             api.clearPhoto(config)

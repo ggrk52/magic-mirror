@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "state": {
+    "displayState": "on",
+    "displayMode": "mirror",
+    "modulesVisibility": {
+      "clock": true,
+      "weather": true,
+      "markets": true,
+      "calendar": true,
+      "news": true
+    }
+  }
+}

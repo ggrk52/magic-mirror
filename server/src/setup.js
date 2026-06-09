@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_SETUP_AP_PASSWORD = "magicmirror";
 
 export class SetupError extends Error {
   constructor(error, message, statusCode = 400) {
@@ -40,7 +41,7 @@ export function createSetupService({
   enabled = process.env.MIRROR_SETUP_MODE === "1",
   autoStartAccessPoint = process.env.MIRROR_SETUP_AP === "1",
   accessPointSsid = process.env.MIRROR_SETUP_AP_SSID ?? `MagicMirror-Setup-${process.env.MIRROR_INSTANCE_ID?.slice(0, 4) ?? "LAN"}`,
-  accessPointPassword = process.env.MIRROR_SETUP_AP_PASSWORD ?? "magicmirror",
+  accessPointPassword = process.env.MIRROR_SETUP_AP_PASSWORD ?? DEFAULT_SETUP_AP_PASSWORD,
   accessPointInterface = process.env.MIRROR_SETUP_AP_IFACE,
   accessPointConnectionName = "MagicMirror-Setup",
   platform = process.platform,
@@ -171,10 +172,10 @@ export function createSetupService({
       assertSetupEnabled(enabled);
 
       const nextToken = String(body.token ?? "").trim();
-      if (nextToken.length < 8) {
+      if (!nextToken) {
         throw new SetupError(
-          "TOKEN_TOO_SHORT",
-          "Token must contain at least 8 characters.",
+          "TOKEN_REQUIRED",
+          "Token is required.",
         );
       }
 

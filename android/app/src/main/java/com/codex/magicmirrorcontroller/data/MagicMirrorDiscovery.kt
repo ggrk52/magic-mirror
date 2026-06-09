@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
-import android.os.Build
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +19,7 @@ import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicInteger
 
 class MagicMirrorDiscovery(context: Context) {
     private val appContext = context.applicationContext
@@ -132,14 +132,15 @@ class MagicMirrorDiscovery(context: Context) {
 
             val prefix = localIpv4Prefix()
             if (prefix == null) {
-                onStatus("mDNS включён. Быстрый скан подсети недоступен для этой сети.", true)
+                onStatus("mDNS работает. Быстрый скан подсети недоступен для этой сети.", true)
                 return@launch
             }
 
             val semaphore = Semaphore(32)
-            var foundCount = 0
+            val foundCount = AtomicInteger(0)
+            val suffixes = (listOf(1, 2, 75, 100, 101, 50, 10, 20, 254) + (1..254)).distinct()
 
-            (1..254).map { suffix ->
+            suffixes.map { suffix ->
                 async {
                     semaphore.withPermit {
                         if (!isActive) {
@@ -147,14 +148,14 @@ class MagicMirrorDiscovery(context: Context) {
                         }
 
                         probeMirror("$prefix.$suffix")?.let { mirror ->
-                            foundCount += 1
+                            foundCount.incrementAndGet()
                             onMirrorFound(mirror)
                         }
                     }
                 }
             }.awaitAll()
 
-            if (isActive && foundCount == 0) {
+            if (isActive && foundCount.get() == 0) {
                 onStatus("Авто-поиск пока ничего не нашёл. QR всё ещё самый быстрый путь.", true)
             }
         }
@@ -180,8 +181,8 @@ class MagicMirrorDiscovery(context: Context) {
         return try {
             val connection = (URL("http://$host:8080/api/health").openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 380
-                readTimeout = 380
+                connectTimeout = 320
+                readTimeout = 320
                 setRequestProperty("Accept", "application/json")
             }
 
@@ -271,10 +272,6 @@ class MagicMirrorDiscovery(context: Context) {
     }
 
     private fun NsdServiceInfo.txtAttributes(): Map<String, String> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return emptyMap()
-        }
-
         return attributes.mapValues { (_, value) -> value.decodeToString() }
     }
 

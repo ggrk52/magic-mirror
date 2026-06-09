@@ -47,11 +47,70 @@ data class MirrorModule(
     val visible: Boolean,
     val refreshable: Boolean,
     val lastUpdatedAt: String?,
+    val layout: MirrorModuleLayout,
+)
+
+data class MirrorModuleLayout(
+    val x: Float,
+    val y: Float,
+    val w: Float,
+    val h: Float,
+)
+
+data class MirrorModuleLayoutUpdate(
+    val id: String,
+    val x: Float,
+    val y: Float,
+    val w: Float,
+    val h: Float,
+)
+
+data class MirrorPhotoOverlay(
+    val id: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val uploadedAt: String,
+    val expiresAt: String,
+    val durationSeconds: Int,
 )
 
 data class MirrorState(
     val displayState: String,
     val displayMode: String,
+    val layoutEditMode: Boolean,
     val lastReloadedAt: String?,
+    val photoOverlay: MirrorPhotoOverlay?,
     val modules: List<MirrorModule>,
+)
+
+data class MirrorDiagnostics(
+    val status: String,
+    val version: String?,
+    val uptimeSeconds: Long,
+    val socketCount: Int,
+    val staticCacheEntries: Int,
+    val memory: MirrorDiagnosticsMemory,
+    val mirror: MirrorDiagnosticsMirror,
+    val pairing: MirrorDiagnosticsPairing,
+    val latencyMs: Long,
+)
+
+data class MirrorDiagnosticsMemory(
+    val rss: Long,
+    val heapUsed: Long,
+    val heapTotal: Long,
+)
+
+data class MirrorDiagnosticsMirror(
+    val displayState: String,
+    val displayMode: String,
+    val layoutEditMode: Boolean,
+    val moduleCount: Int,
+    val visibleModuleCount: Int,
+    val photoOverlayActive: Boolean,
+)
+
+data class MirrorDiagnosticsPairing(
+    val controllerConnected: Boolean,
+    val controllerConnectedAt: String?,
 )

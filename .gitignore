@@ -11,3 +11,5 @@ android/.idea/
 android/build/
 android/app/build/
 android/local.properties
+server/data/layout.json
+.DS_Store

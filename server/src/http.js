@@ -1,25 +1,48 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join } from "node:path";
 
 import { buildPairingPayload, buildPairingQrSvg } from "./pairing.js";
 import { SetupError } from "./setup.js";
 
 const textEncoder = new TextEncoder();
+const JSON_BODY_LIMIT_BYTES = 1024 * 64;
+const PHOTO_BODY_LIMIT_BYTES = 1024 * 1024 * 9;
+const PHOTO_DATA_LIMIT_BYTES = 1024 * 1024 * 6;
+const PHOTO_DURATION_MIN_SECONDS = 1;
+const PHOTO_DURATION_MAX_SECONDS = 60 * 60;
+const PHOTO_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".otf": "font/otf",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".ttf": "font/ttf",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
+const STATIC_CACHE_CONTROL = "public, max-age=300";
+const STATIC_CACHE_MAX_BYTES = 1024 * 1024 * 2;
+const STATIC_NO_MEMORY_CACHE_EXTENSIONS = new Set([".css", ".js", ".html"]);
+const staticFileCache = new Map();
 
 function json(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(payload));
+}
+
+function binary(response, statusCode, body, mimeType) {
+  response.writeHead(statusCode, {
+    "Content-Type": mimeType,
+    "Content-Length": body.length,
+    "Cache-Control": "no-store",
+  });
+  response.end(body);
 }
 
 function svg(response, statusCode, body) {
@@ -45,16 +68,35 @@ function escapeScriptValue(value) {
 }
 
 export function shouldEmbedUiToken(remoteAddress) {
-  return [
-    "127.0.0.1",
-    "::1",
-    "::ffff:127.0.0.1",
-  ].includes(remoteAddress ?? "");
+  if (!remoteAddress) {
+    return false;
+  }
+
+  return (
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1"
+  );
 }
 
-function readJsonBody(request) {
+function formatBytes(bytes) {
+  if (bytes >= 1024 * 1024) {
+    return `${Math.round((bytes / 1024 / 1024) * 10) / 10} MB`;
+  }
+
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+function bodyTooLargeError(limitBytes) {
+  const error = new Error("BODY_TOO_LARGE");
+  error.limitBytes = limitBytes;
+  return error;
+}
+
+function readJsonBody(request, { maxBytes = JSON_BODY_LIMIT_BYTES } = {}) {
   return new Promise((resolve, reject) => {
-    let rawBody = "";
+    const chunks = [];
+    let totalBytes = 0;
     let bodyTooLarge = false;
 
     request.on("data", (chunk) => {
@@ -62,18 +104,24 @@ function readJsonBody(request) {
         return;
       }
 
-      rawBody += chunk;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
 
-      if (rawBody.length > 1024 * 64) {
+      if (totalBytes > maxBytes) {
         bodyTooLarge = true;
-        reject(new Error("BODY_TOO_LARGE"));
+        reject(bodyTooLargeError(maxBytes));
+        return;
       }
+
+      chunks.push(buffer);
     });
 
     request.on("end", () => {
       if (bodyTooLarge) {
         return;
       }
+
+      const rawBody = Buffer.concat(chunks).toString("utf8");
 
       if (!rawBody) {
         resolve({});
@@ -91,17 +139,69 @@ function readJsonBody(request) {
   });
 }
 
+function parsePhotoPayload(body) {
+  const durationSeconds = Number(body.durationSeconds ?? 300);
+
+  if (!Number.isFinite(durationSeconds)) {
+    throw new Error("INVALID_PHOTO_DURATION");
+  }
+
+  const normalizedDurationSeconds = Math.floor(durationSeconds);
+  if (
+    normalizedDurationSeconds < PHOTO_DURATION_MIN_SECONDS ||
+    normalizedDurationSeconds > PHOTO_DURATION_MAX_SECONDS
+  ) {
+    throw new Error("INVALID_PHOTO_DURATION");
+  }
+
+  if (typeof body.imageData !== "string") {
+    throw new Error("INVALID_PHOTO_DATA");
+  }
+
+  const match = body.imageData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!match) {
+    throw new Error("INVALID_PHOTO_DATA");
+  }
+
+  const mimeType = match[1].toLowerCase();
+  if (!PHOTO_MIME_TYPES.has(mimeType)) {
+    throw new Error("INVALID_PHOTO_TYPE");
+  }
+
+  const data = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+  if (data.length === 0 || data.length > PHOTO_DATA_LIMIT_BYTES) {
+    throw new Error("PHOTO_TOO_LARGE");
+  }
+
+  return {
+    data,
+    mimeType,
+    durationSeconds: normalizedDurationSeconds,
+  };
+}
+
 async function serveStaticFile(response, publicDir, pathname) {
-  const relativePath = pathname === "/" ? "/index.html" : pathname;
-  const safePath = normalize(relativePath)
-    .replace(/^(\.\.[\\/])+/, "")
-    .replace(/^[/\\]+/, "");
+  const safePath = pathname === "/" ? "/index.html" : pathname;
   const absolutePath = join(publicDir, safePath);
-  const body = await readFile(absolutePath);
   const extension = extname(absolutePath);
+  const canUseMemoryCache = !STATIC_NO_MEMORY_CACHE_EXTENSIONS.has(extension);
+  const cached = canUseMemoryCache ? staticFileCache.get(absolutePath) : null;
+  let body;
+
+  if (cached) {
+    body = cached.body;
+  } else {
+    body = await readFile(absolutePath);
+
+    if (canUseMemoryCache && body.length <= STATIC_CACHE_MAX_BYTES) {
+      staticFileCache.set(absolutePath, { body });
+    }
+  }
 
   response.writeHead(200, {
     "Content-Type": MIME_TYPES[extension] ?? "application/octet-stream",
+    "Content-Length": body.length,
+    "Cache-Control": canUseMemoryCache ? STATIC_CACHE_CONTROL : "no-store",
   });
   response.end(body);
 }
@@ -113,6 +213,7 @@ async function serveIndexHtml(response, publicDir, token) {
 
   response.writeHead(200, {
     "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
   });
   response.end(body);
 }
@@ -156,6 +257,7 @@ export function createApp({
   const getToken = typeof token === "function" ? token : () => token;
   const apiRouteMethods = new Map([
     ["/api/health", ["GET"]],
+    ["/api/diagnostics", ["GET"]],
     ["/api/pairing", ["GET"]],
     ["/api/pairing/qr.svg", ["GET"]],
     ["/api/pairing/status", ["GET"]],
@@ -168,13 +270,19 @@ export function createApp({
     ["/api/mirror/state", ["GET"]],
     ["/api/mirror/display", ["POST"]],
     ["/api/mirror/mode", ["POST"]],
+    ["/api/mirror/layout/edit", ["POST"]],
+    ["/api/mirror/photo", ["POST", "DELETE"]],
+    ["/api/mirror/photo/current", ["GET"]],
     ["/api/modules", ["GET"]],
+    ["/api/modules/layout", ["POST"]],
+    ["/api/modules/layout/reset", ["POST"]],
     ["/api/modules/refresh-all", ["POST"]],
   ]);
   const pairingStatus = {
     controllerConnected: false,
     controllerConnectedAt: null,
   };
+  let photoOverlayTimer = null;
 
   function getWebSocketToken(request) {
     const url = new URL(request.url, "http://localhost");
@@ -199,6 +307,8 @@ export function createApp({
   }
 
   function broadcastState() {
+    expirePhotoOverlayIfNeeded();
+
     const payload = JSON.stringify({
       type: "mirror_state_changed",
       payload: store.getState(),
@@ -212,6 +322,44 @@ export function createApp({
         sockets.delete(socket);
       }
     }
+  }
+
+  function clearPhotoOverlayTimer() {
+    if (photoOverlayTimer) {
+      clearTimeout(photoOverlayTimer);
+      photoOverlayTimer = null;
+    }
+  }
+
+  function expirePhotoOverlayIfNeeded({ broadcast = false } = {}) {
+    if (!store.clearExpiredPhotoOverlay()) {
+      return false;
+    }
+
+    clearPhotoOverlayTimer();
+
+    if (broadcast) {
+      broadcastState();
+    }
+
+    return true;
+  }
+
+  function schedulePhotoOverlayExpiry() {
+    clearPhotoOverlayTimer();
+
+    const photo = store.getPhotoOverlay();
+    if (!photo) {
+      return;
+    }
+
+    const delayMs = Math.max(0, new Date(photo.expiresAt).getTime() - Date.now());
+    photoOverlayTimer = setTimeout(() => {
+      photoOverlayTimer = null;
+      if (store.clearExpiredPhotoOverlay()) {
+        broadcastState();
+      }
+    }, delayMs + 25);
   }
 
   function broadcastPairingStatus() {
@@ -342,7 +490,41 @@ export function createApp({
       return;
     }
 
-    if (pathname.startsWith("/api/pairing/") && !requireAuth(request, response)) {
+    if (pathname.startsWith("/api/setup/")) {
+      if (await handleSetup(request, response, pathname)) {
+        return;
+      }
+    }
+
+    if (pathname.startsWith("/api/") && !requireAuth(request, response)) {
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/diagnostics") {
+      const state = store.getState();
+      const memory = process.memoryUsage();
+
+      json(response, 200, {
+        status: "ok",
+        version,
+        uptimeSeconds: Math.round(process.uptime()),
+        socketCount: sockets.size,
+        staticCacheEntries: staticFileCache.size,
+        memory: {
+          rss: memory.rss,
+          heapUsed: memory.heapUsed,
+          heapTotal: memory.heapTotal,
+        },
+        mirror: {
+          displayState: state.displayState,
+          displayMode: state.displayMode,
+          layoutEditMode: state.layoutEditMode,
+          moduleCount: state.modules.length,
+          visibleModuleCount: state.modules.filter((module) => module.visible).length,
+          photoOverlayActive: Boolean(state.photoOverlay),
+        },
+        pairing: pairingStatus,
+      });
       return;
     }
 
@@ -359,15 +541,7 @@ export function createApp({
       return;
     }
 
-    if (pathname.startsWith("/api/setup/")) {
-      if (await handleSetup(request, response, pathname)) {
-        return;
-      }
-    }
-
-    if (pathname.startsWith("/api/") && !requireAuth(request, response)) {
-      return;
-    }
+    expirePhotoOverlayIfNeeded({ broadcast: true });
 
     if (request.method === "GET" && pathname === "/api/mirror/state") {
       json(response, 200, store.getState());
@@ -434,6 +608,107 @@ export function createApp({
           message: "Mode must be one of mirror, gallery, or ar.",
         });
       }
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/mirror/layout/edit") {
+      const body = await readJsonBody(request);
+
+      try {
+        const state = store.setLayoutEditMode(body.active);
+        json(response, 200, state);
+        broadcastState();
+      } catch (error) {
+        json(response, 400, {
+          error: error.message,
+          message: "Active must be a boolean value.",
+        });
+      }
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/mirror/photo") {
+      try {
+        const body = await readJsonBody(request, { maxBytes: PHOTO_BODY_LIMIT_BYTES });
+        const state = store.setPhotoOverlay(parsePhotoPayload(body));
+        schedulePhotoOverlayExpiry();
+        json(response, 200, state);
+        broadcastState();
+      } catch (error) {
+        if (error.message === "PHOTO_TOO_LARGE") {
+          json(response, 413, {
+            error: error.message,
+            message: `Photo must be ${formatBytes(PHOTO_DATA_LIMIT_BYTES)} or smaller after processing.`,
+          });
+          return;
+        }
+
+        if (
+          [
+            "INVALID_PHOTO_DATA",
+            "INVALID_PHOTO_TYPE",
+            "INVALID_PHOTO_DURATION",
+          ].includes(error.message)
+        ) {
+          json(response, 400, {
+            error: error.message,
+            message: "Photo must be a JPEG, PNG, or WebP data URL. Duration must be 1 to 3600 seconds.",
+          });
+          return;
+        }
+
+        throw error;
+      }
+      return;
+    }
+
+    if (request.method === "DELETE" && pathname === "/api/mirror/photo") {
+      clearPhotoOverlayTimer();
+      const state = store.clearPhotoOverlay();
+      json(response, 200, state);
+      broadcastState();
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/mirror/photo/current") {
+      const photo = store.getPhotoOverlay();
+
+      if (!photo) {
+        json(response, 404, {
+          error: "PHOTO_NOT_FOUND",
+          message: "No temporary photo is active.",
+        });
+        return;
+      }
+
+      binary(response, 200, photo.data, photo.mimeType);
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/modules/layout") {
+      const body = await readJsonBody(request);
+
+      try {
+        const state = await store.setModuleLayout(body.modules);
+        json(response, 200, state);
+        broadcastState();
+      } catch (error) {
+        const statusCode = error.message === "MODULE_NOT_FOUND" ? 404 : 400;
+        json(response, statusCode, {
+          error: error.message,
+          message:
+            error.message === "MODULE_NOT_FOUND"
+              ? "Module was not found."
+              : "Layout coordinates and size must keep every widget inside the screen.",
+        });
+      }
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/modules/layout/reset") {
+      const state = await store.resetModuleLayout();
+      json(response, 200, state);
+      broadcastState();
       return;
     }
 
@@ -527,7 +802,7 @@ export function createApp({
       if (error.message === "BODY_TOO_LARGE") {
         json(response, 413, {
           error: "BODY_TOO_LARGE",
-          message: "Request body must be 64 KB or smaller.",
+          message: `Request body must be ${formatBytes(error.limitBytes ?? JSON_BODY_LIMIT_BYTES)} or smaller.`,
         });
         return;
       }
@@ -592,6 +867,8 @@ export function createApp({
       ].join("\r\n"),
     );
 
+    socket.setNoDelay?.(true);
+    socket.setKeepAlive?.(true, 30000);
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
     socket.on("error", () => sockets.delete(socket));
@@ -622,6 +899,8 @@ export function createApp({
 
   return {
     closeSockets() {
+      clearPhotoOverlayTimer();
+
       for (const socket of sockets) {
         socket.destroy();
       }

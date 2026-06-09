@@ -1,60 +1,8 @@
-const mirrorRoot = document.querySelector("#mirrorRoot");
-const galleryImage = document.querySelector("#galleryImage");
-const galleryTitle = document.querySelector("#galleryTitle");
-const galleryArtist = document.querySelector("#galleryArtist");
-const arVideo = document.querySelector("#arVideo");
-const arCanvas = document.querySelector("#arCanvas");
-const arTracking = document.querySelector("#arTracking");
-const arMessage = document.querySelector("#arMessage");
-const arControls = document.querySelector("#arControls");
-const connectionState = document.querySelector("#connectionState");
-const mirrorMeta = document.querySelector("#mirrorMeta");
-const dateLine = document.querySelector("#dateLine");
-const timeMain = document.querySelector("#timeMain");
-const timeSeconds = document.querySelector("#timeSeconds");
-const timePeriod = document.querySelector("#timePeriod");
-const weatherTemp = document.querySelector("#weatherTemp");
-const weatherPlace = document.querySelector("#weatherPlace");
-const forecastList = document.querySelector("#forecastList");
-const fiatRates = document.querySelector("#fiatRates");
-const cryptoRates = document.querySelector("#cryptoRates");
-const newsHeadline = document.querySelector("#newsHeadline");
-const pairingPanel = document.querySelector("#pairingPanel");
-const pairingQr = document.querySelector("#pairingQr");
-const pairingHint = document.querySelector("#pairingHint");
-const wsToken = window.__MIRROR_CONFIG__?.wsToken ?? "";
-const moscowWeatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
 const mediaPipeVersion = "0.10.22-rc.20250304";
 const mediaPipeVisionUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${mediaPipeVersion}/vision_bundle.mjs`;
 const mediaPipeWasmUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${mediaPipeVersion}/wasm`;
 const poseModelUrl =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
-
-moscowWeatherUrl.search = new URLSearchParams({
-  latitude: "55.7558",
-  longitude: "37.6173",
-  current: "temperature_2m,weather_code",
-  daily: "weather_code,temperature_2m_max,temperature_2m_min",
-  timezone: "Europe/Moscow",
-  forecast_days: "5",
-  temperature_unit: "celsius",
-}).toString();
-
-const headlines = [
-  "ТАСС: загружаем свежие новости",
-];
-
-let headlineIndex = 0;
-let newsItems = headlines;
-let currentArtworkIndex = -1;
-let arStream = null;
-let arAnimationFrame = 0;
-let arPoseLandmarker = null;
-let arPoseInitPromise = null;
-let arLastVideoTime = -1;
-let arLastPoseTimestamp = 0;
-let arSmoothedBody = null;
-let activeGarment = "hoodie";
 
 const poseLandmarks = {
   leftShoulder: 11,
@@ -103,127 +51,20 @@ const garmentStyles = {
   },
 };
 
-const artworks = [
-  {
-    title: "The Bedroom",
-    artist: "Винсент ван Гог",
-    imageId: "6644829f-f292-c5c4-a73c-0356a6fdbf0d",
-  },
-  {
-    title: "Self-Portrait",
-    artist: "Винсент ван Гог",
-    imageId: "47c5bcb8-62ef-e5d7-55e7-f5121f409a30",
-  },
-  {
-    title: "Water Lilies",
-    artist: "Клод Моне",
-    imageId: "3c27b499-af56-f0d5-93b5-a7f2f1ad5813",
-  },
-  {
-    title: "Arrival of the Normandy Train, Gare Saint-Lazare",
-    artist: "Клод Моне",
-    imageId: "0f1cc0e0-e42e-be16-3f71-2022da38cb93",
-  },
-  {
-    title: "Two Sisters (On the Terrace)",
-    artist: "Пьер-Огюст Ренуар",
-    imageId: "3a608f55-d76e-fa96-d0b1-0789fbc48f1e",
-  },
-  {
-    title: "Woman at the Piano",
-    artist: "Пьер-Огюст Ренуар",
-    imageId: "8f06717c-9ede-f22b-d13b-327a50c22f9c",
-  },
-  {
-    title: "The Basket of Apples",
-    artist: "Поль Сезанн",
-    imageId: "52ac8996-3460-cf71-cb42-5c4d0aa29b74",
-  },
-  {
-    title: "The Bay of Marseille, Seen from L'Estaque",
-    artist: "Поль Сезанн",
-    imageId: "d4ca6321-8656-3d3f-a362-2ee297b2b813",
-  },
-];
+let arStream = null;
+let arAnimationFrame = 0;
+let arPoseLandmarker = null;
+let arPoseInitPromise = null;
+let arLastVideoTime = -1;
+let arLastPoseTimestamp = 0;
+let arSmoothedBody = null;
+let activeGarment = "hoodie";
 
-const weatherCodeLabels = new Map([
-  [0, "ясно"],
-  [1, "почти ясно"],
-  [2, "переменная облачность"],
-  [3, "пасмурно"],
-  [45, "туман"],
-  [48, "изморозь"],
-  [51, "морось"],
-  [53, "морось"],
-  [55, "сильная морось"],
-  [56, "ледяная морось"],
-  [57, "ледяная морось"],
-  [61, "дождь"],
-  [63, "дождь"],
-  [65, "сильный дождь"],
-  [66, "ледяной дождь"],
-  [67, "ледяной дождь"],
-  [71, "снег"],
-  [73, "снег"],
-  [75, "сильный снег"],
-  [77, "снежные зерна"],
-  [80, "ливень"],
-  [81, "ливень"],
-  [82, "сильный ливень"],
-  [85, "снегопад"],
-  [86, "сильный снегопад"],
-  [95, "гроза"],
-  [96, "гроза с градом"],
-  [99, "гроза с градом"],
-]);
-
-function formatMirrorDate(now) {
-  return new Intl.DateTimeFormat("ru-RU", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(now);
-}
-
-function updateClock() {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
-
-  dateLine.textContent = formatMirrorDate(now);
-  timeMain.textContent = `${hours}:${minutes}`;
-  timeSeconds.textContent = seconds;
-  timePeriod.textContent = "";
-}
-
-function rotateNewsHeadline() {
-  headlineIndex = (headlineIndex + 1) % newsItems.length;
-  newsHeadline.textContent = newsItems[headlineIndex];
-}
-
-function artworkImageUrl(imageId) {
-  return `https://www.artic.edu/iiif/2/${imageId}/full/1400,/0/default.jpg`;
-}
-
-function showRandomArtwork() {
-  if (artworks.length === 0) {
-    return;
-  }
-
-  let nextIndex = Math.floor(Math.random() * artworks.length);
-  if (artworks.length > 1 && nextIndex === currentArtworkIndex) {
-    nextIndex = (nextIndex + 1) % artworks.length;
-  }
-
-  currentArtworkIndex = nextIndex;
-  const artwork = artworks[currentArtworkIndex];
-  galleryImage.src = artworkImageUrl(artwork.imageId);
-  galleryImage.alt = `${artwork.title}, ${artwork.artist}`;
-  galleryTitle.textContent = artwork.title;
-  galleryArtist.textContent = artwork.artist;
-}
+let arVideo = null;
+let arCanvas = null;
+let arTracking = null;
+let arMessage = null;
+let arControls = null;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -701,7 +542,7 @@ function stopArTrackingLoop() {
   clearArCanvas();
 }
 
-async function startArCamera() {
+export async function startArCamera() {
   if (arStream) {
     startArTrackingLoop();
     return;
@@ -753,7 +594,7 @@ async function startArCamera() {
   }
 }
 
-function stopArCamera() {
+export function stopArCamera() {
   stopArTrackingLoop();
 
   if (!arStream) {
@@ -768,7 +609,7 @@ function stopArCamera() {
   arVideo.srcObject = null;
 }
 
-function setArGarment(garment) {
+export function setArGarment(garment) {
   if (!garmentStyles[garment]) {
     return;
   }
@@ -781,387 +622,10 @@ function setArGarment(garment) {
   }
 }
 
-function renderNews(items) {
-  newsItems = items.map((item) => `ТАСС: ${item.title}`).filter(Boolean);
-
-  if (newsItems.length === 0) {
-    newsItems = ["ТАСС: новости временно недоступны"];
-  }
-
-  headlineIndex = 0;
-  newsHeadline.textContent = newsItems[headlineIndex];
+export function initAr(elements) {
+  arVideo = elements.video;
+  arCanvas = elements.canvas;
+  arTracking = elements.tracking;
+  arMessage = elements.message;
+  arControls = elements.controls;
 }
-
-async function loadTassNews() {
-  try {
-    const response = await fetch("/api/news/tass", {
-      headers: {
-        Authorization: `Bearer ${wsToken}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error("News request failed");
-    }
-
-    const payload = await response.json();
-    renderNews(payload.items ?? []);
-  } catch (error) {
-    renderNews([{ title: "новости временно недоступны" }]);
-  }
-}
-
-function formatRub(value, fractionDigits = 2) {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return "--";
-  }
-
-  return new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: fractionDigits,
-    minimumFractionDigits: fractionDigits,
-  }).format(value);
-}
-
-function formatMarketDelta(value, previous) {
-  if (typeof value !== "number" || typeof previous !== "number") {
-    return "";
-  }
-
-  const delta = value - previous;
-  if (Math.abs(delta) < 0.0001) {
-    return "0.00";
-  }
-
-  return `${delta > 0 ? "+" : ""}${formatRub(delta, 2)}`;
-}
-
-function formatCryptoDelta(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return "";
-  }
-
-  return `${value > 0 ? "+" : ""}${formatRub(value, 2)}%`;
-}
-
-function marketDeltaClass(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return "";
-  }
-
-  if (value > 0) {
-    return "up";
-  }
-
-  if (value < 0) {
-    return "down";
-  }
-
-  return "";
-}
-
-function renderMarketRows(container, items, type) {
-  container.replaceChildren();
-
-  for (const item of items) {
-    const row = document.createElement("div");
-    const label = document.createElement("span");
-    const value = document.createElement("strong");
-    const meta = document.createElement("em");
-    const deltaValue =
-      type === "crypto"
-        ? item.change24hPct
-        : item.valueRub - item.previousRub;
-
-    row.className = "market-row";
-    label.textContent = item.label;
-    value.textContent = `${formatRub(item.valueRub, item.valueRub > 1000 ? 0 : 2)} ₽`;
-    meta.textContent =
-      type === "crypto"
-        ? `${item.code} ${formatCryptoDelta(item.change24hPct)}`
-        : `${item.code} ${formatMarketDelta(item.valueRub, item.previousRub)}`;
-    meta.classList.toggle("up", marketDeltaClass(deltaValue) === "up");
-    meta.classList.toggle("down", marketDeltaClass(deltaValue) === "down");
-
-    row.append(label, value, meta);
-    container.append(row);
-  }
-}
-
-function renderMarkets(payload) {
-  renderMarketRows(fiatRates, payload.fiat ?? [], "fiat");
-  renderMarketRows(cryptoRates, payload.crypto ?? [], "crypto");
-}
-
-async function loadMarkets() {
-  try {
-    const response = await fetch("/api/markets", {
-      headers: {
-        Authorization: `Bearer ${wsToken}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error("Market request failed");
-    }
-
-    renderMarkets(await response.json());
-  } catch (error) {
-    fiatRates.querySelector("strong").textContent = "нет данных";
-    cryptoRates.querySelector("strong").textContent = "нет данных";
-  }
-}
-
-function formatTemperature(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return "--";
-  }
-
-  return Math.round(value).toString();
-}
-
-function formatForecastTemperature(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return "--°C";
-  }
-
-  return `${Math.round(value)}°C`;
-}
-
-function formatForecastDay(value) {
-  const date = new Date(`${value}T12:00:00+03:00`);
-
-  return new Intl.DateTimeFormat("ru-RU", {
-    weekday: "short",
-  })
-    .format(date)
-    .replace(".", "");
-}
-
-function weatherCodeLabel(code) {
-  return weatherCodeLabels.get(code) ?? "погода";
-}
-
-function renderWeather(weather) {
-  const currentTemperature = weather.current?.temperature_2m;
-  const currentCode = weather.current?.weather_code;
-  const daily = weather.daily ?? {};
-
-  weatherTemp.innerHTML = `${formatTemperature(currentTemperature)}<span>&deg;C</span>`;
-  weatherPlace.textContent = `Москва · ${weatherCodeLabel(currentCode)}`;
-  forecastList.replaceChildren();
-
-  for (let index = 0; index < Math.min(daily.time?.length ?? 0, 5); index += 1) {
-    const item = document.createElement("li");
-    const day = document.createElement("span");
-    const max = document.createElement("strong");
-    const min = document.createElement("em");
-
-    day.textContent = formatForecastDay(daily.time[index]);
-    max.textContent = formatForecastTemperature(daily.temperature_2m_max?.[index]);
-    min.textContent = formatForecastTemperature(daily.temperature_2m_min?.[index]);
-    item.title = weatherCodeLabel(daily.weather_code?.[index]);
-    item.append(day, max, min);
-    forecastList.append(item);
-  }
-}
-
-async function loadMoscowWeather() {
-  try {
-    const response = await fetch(moscowWeatherUrl, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error("Weather request failed");
-    }
-
-    renderWeather(await response.json());
-  } catch (error) {
-    weatherPlace.textContent = "Москва · нет данных";
-  }
-}
-
-function setConnection(label, connected = false) {
-  connectionState.textContent = label;
-  connectionState.classList.toggle("connected", connected);
-}
-
-function setModuleVisibility(state) {
-  const modulesById = new Map(state.modules.map((module) => [module.id, module]));
-
-  for (const element of document.querySelectorAll("[data-module-id]")) {
-    const module = modulesById.get(element.dataset.moduleId);
-    element.classList.toggle("module-hidden", module?.visible === false);
-  }
-}
-
-function formatMetaTime(value) {
-  if (!value) {
-    return "Без перезагрузок";
-  }
-
-  return `Перезагрузка ${new Intl.DateTimeFormat("ru-RU", {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value))}`;
-}
-
-function renderState(state) {
-  const displayMode = state.displayMode ?? "mirror";
-
-  mirrorRoot.classList.toggle("display-off", state.displayState === "off");
-  mirrorRoot.classList.toggle("gallery-mode", displayMode === "gallery");
-  mirrorRoot.classList.toggle("ar-mode", displayMode === "ar");
-  setModuleVisibility(state);
-
-  if (displayMode === "gallery" && currentArtworkIndex === -1) {
-    showRandomArtwork();
-  }
-
-  if (displayMode === "ar") {
-    startArCamera();
-  } else {
-    stopArCamera();
-  }
-
-  const visibleCount = state.modules.filter((module) => module.visible).length;
-  const modeLabel =
-    displayMode === "gallery"
-      ? "экран ожидания"
-      : displayMode === "ar"
-        ? "AR примерка"
-        : "зеркало";
-  mirrorMeta.textContent = `${modeLabel} - видно модулей: ${visibleCount}/${state.modules.length} - ${formatMetaTime(
-    state.lastReloadedAt,
-  )}`;
-}
-
-function renderPairingStatus(status) {
-  if (!pairingPanel || !wsToken) {
-    return;
-  }
-
-  pairingPanel.hidden = Boolean(status?.controllerConnected);
-}
-
-async function pingServer() {
-  const response = await fetch("/api/health");
-
-  if (!response.ok) {
-    throw new Error("Server is not healthy");
-  }
-}
-
-function connect() {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const socketUrl = new URL(`${protocol}//${window.location.host}/ws`);
-
-  if (wsToken) {
-    socketUrl.searchParams.set("token", wsToken);
-  }
-
-  const socket = new WebSocket(socketUrl);
-
-  socket.addEventListener("open", async () => {
-    setConnection("Подключено", true);
-
-    try {
-      await pingServer();
-    } catch (error) {
-      setConnection("Ошибка сервера");
-    }
-  });
-
-  socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data);
-
-    if (message.type === "mirror_state_changed") {
-      renderState(message.payload);
-    }
-
-    if (message.type === "pairing_status_changed") {
-      renderPairingStatus(message.payload);
-    }
-  });
-
-  socket.addEventListener("close", () => {
-    setConnection(wsToken ? "Переподключение..." : "Нет токена");
-
-    if (wsToken) {
-      window.setTimeout(connect, 1500);
-    }
-  });
-
-  socket.addEventListener("error", () => {
-    socket.close();
-  });
-}
-
-async function loadPairingQr() {
-  if (!wsToken || !pairingPanel || !pairingQr) {
-    return;
-  }
-
-  try {
-    const statusResponse = await fetch("/api/pairing/status", {
-      headers: {
-        Authorization: `Bearer ${wsToken}`,
-      },
-      cache: "no-store",
-    });
-
-    if (statusResponse.ok) {
-      const status = await statusResponse.json();
-      renderPairingStatus(status);
-
-      if (status.controllerConnected) {
-        return;
-      }
-    }
-
-    pairingPanel.hidden = false;
-    const response = await fetch("/api/pairing/qr.svg", { cache: "no-store" });
-
-    if (!response.ok) {
-      throw new Error(`QR endpoint returned ${response.status}`);
-    }
-
-    pairingQr.classList.remove("error");
-    pairingQr.innerHTML = await response.text();
-    pairingHint.textContent = "Открой приложение и нажми «Сканировать QR»";
-  } catch (error) {
-    pairingQr.classList.add("error");
-    pairingQr.textContent = "QR недоступен. Перезапусти сервер после обновления кода.";
-    pairingHint.textContent = "После перезапуска обнови страницу зеркала.";
-  }
-}
-
-updateClock();
-pairingPanel.hidden = true;
-loadPairingQr();
-loadMoscowWeather();
-loadTassNews();
-loadMarkets();
-showRandomArtwork();
-setArGarment("hoodie");
-arControls.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-garment]");
-  if (!button) {
-    return;
-  }
-
-  setArGarment(button.dataset.garment);
-});
-window.setInterval(updateClock, 1000);
-window.setInterval(loadMoscowWeather, 10 * 60 * 1000);
-window.setInterval(loadTassNews, 5 * 60 * 1000);
-window.setInterval(loadMarkets, 2 * 60 * 1000);
-window.setInterval(rotateNewsHeadline, 14000);
-window.setInterval(() => {
-  if (mirrorRoot.classList.contains("gallery-mode")) {
-    showRandomArtwork();
-  }
-}, 45 * 1000);
-connect();

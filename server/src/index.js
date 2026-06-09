@@ -2,7 +2,7 @@ import { networkInterfaces } from "node:os";
 
 import { startServer } from "./server.js";
 
-const runtime = await startServer();
+const runtime = await startServer({ enablePolling: true });
 
 const host = typeof runtime.address === "object" ? runtime.address.address : "127.0.0.1";
 const port = typeof runtime.address === "object" ? runtime.address.port : process.env.MIRROR_PORT;

@@ -1,5 +1,6 @@
 package com.codex.magicmirrorcontroller.data
 
+import android.util.Base64
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.ConnectException
@@ -52,6 +53,29 @@ class MagicMirrorApi {
         return parseState(JSONObject(payload))
     }
 
+    fun fetchDiagnostics(config: ServerConfig): MirrorDiagnostics {
+        val startedAt = System.nanoTime()
+        val payload = request(
+            method = "GET",
+            url = buildUrl(config, "/api/diagnostics"),
+            token = config.token,
+        )
+        val latencyMs = ((System.nanoTime() - startedAt) / 1_000_000).coerceAtLeast(0)
+
+        return parseDiagnostics(JSONObject(payload), latencyMs)
+    }
+
+    fun setLayoutEditMode(config: ServerConfig, active: Boolean): MirrorState {
+        val payload = request(
+            method = "POST",
+            url = buildUrl(config, "/api/mirror/layout/edit"),
+            token = config.token,
+            body = JSONObject().put("active", active).toString(),
+        )
+
+        return parseState(JSONObject(payload))
+    }
+
     fun setModuleVisibility(config: ServerConfig, moduleId: String, visible: Boolean): MirrorState {
         val payload = request(
             method = "POST",
@@ -77,6 +101,72 @@ class MagicMirrorApi {
         val payload = request(
             method = "POST",
             url = buildUrl(config, "/api/modules/refresh-all"),
+            token = config.token,
+        )
+
+        return parseState(JSONObject(payload))
+    }
+
+    fun updateModuleLayout(
+        config: ServerConfig,
+        modules: List<MirrorModuleLayoutUpdate>,
+    ): MirrorState {
+        val items = JSONArray()
+        for (module in modules) {
+            items.put(
+                JSONObject()
+                    .put("id", module.id)
+                    .put("x", module.x)
+                    .put("y", module.y)
+                    .put("w", module.w)
+                    .put("h", module.h),
+            )
+        }
+
+        val payload = request(
+            method = "POST",
+            url = buildUrl(config, "/api/modules/layout"),
+            token = config.token,
+            body = JSONObject().put("modules", items).toString(),
+        )
+
+        return parseState(JSONObject(payload))
+    }
+
+    fun resetModuleLayout(config: ServerConfig): MirrorState {
+        val payload = request(
+            method = "POST",
+            url = buildUrl(config, "/api/modules/layout/reset"),
+            token = config.token,
+        )
+
+        return parseState(JSONObject(payload))
+    }
+
+    fun uploadPhoto(
+        config: ServerConfig,
+        imageBytes: ByteArray,
+        mimeType: String,
+        durationSeconds: Int,
+    ): MirrorState {
+        val imageData = "data:$mimeType;base64,${Base64.encodeToString(imageBytes, Base64.NO_WRAP)}"
+        val payload = request(
+            method = "POST",
+            url = buildUrl(config, "/api/mirror/photo"),
+            token = config.token,
+            body = JSONObject()
+                .put("imageData", imageData)
+                .put("durationSeconds", durationSeconds)
+                .toString(),
+        )
+
+        return parseState(JSONObject(payload))
+    }
+
+    fun clearPhoto(config: ServerConfig): MirrorState {
+        val payload = request(
+            method = "DELETE",
+            url = buildUrl(config, "/api/mirror/photo"),
             token = config.token,
         )
 
@@ -194,14 +284,27 @@ class MagicMirrorApi {
 
     private fun parseState(json: JSONObject): MirrorState {
         val modules = json.optJSONArray("modules") ?: JSONArray()
+        val photoOverlay = json.optJSONObject("photoOverlay")?.let { photo ->
+            MirrorPhotoOverlay(
+                id = photo.getString("id"),
+                mimeType = photo.getString("mimeType"),
+                sizeBytes = photo.optLong("sizeBytes"),
+                uploadedAt = photo.getString("uploadedAt"),
+                expiresAt = photo.getString("expiresAt"),
+                durationSeconds = photo.optInt("durationSeconds"),
+            )
+        }
 
         return MirrorState(
             displayState = json.optString("displayState", "off"),
             displayMode = json.optString("displayMode", "mirror"),
+            layoutEditMode = json.optBoolean("layoutEditMode"),
             lastReloadedAt = json.optString("lastReloadedAt").takeIf { it.isNotBlank() },
+            photoOverlay = photoOverlay,
             modules = buildList {
                 for (index in 0 until modules.length()) {
                     val item = modules.getJSONObject(index)
+                    val layout = item.optJSONObject("layout") ?: JSONObject()
                     add(
                         MirrorModule(
                             id = item.getString("id"),
@@ -209,10 +312,48 @@ class MagicMirrorApi {
                             visible = item.optBoolean("visible"),
                             refreshable = item.optBoolean("refreshable"),
                             lastUpdatedAt = item.optString("lastUpdatedAt").takeIf { it.isNotBlank() },
+                            layout = MirrorModuleLayout(
+                                x = layout.optDouble("x", 0.0).toFloat(),
+                                y = layout.optDouble("y", 0.0).toFloat(),
+                                w = layout.optDouble("w", 42.0).toFloat(),
+                                h = layout.optDouble("h", 12.0).toFloat(),
+                            ),
                         ),
                     )
                 }
             },
+        )
+    }
+
+    private fun parseDiagnostics(json: JSONObject, latencyMs: Long): MirrorDiagnostics {
+        val memory = json.optJSONObject("memory") ?: JSONObject()
+        val mirror = json.optJSONObject("mirror") ?: JSONObject()
+        val pairing = json.optJSONObject("pairing") ?: JSONObject()
+
+        return MirrorDiagnostics(
+            status = json.optString("status", "unknown"),
+            version = json.optString("version").takeIf { it.isNotBlank() },
+            uptimeSeconds = json.optLong("uptimeSeconds"),
+            socketCount = json.optInt("socketCount"),
+            staticCacheEntries = json.optInt("staticCacheEntries"),
+            memory = MirrorDiagnosticsMemory(
+                rss = memory.optLong("rss"),
+                heapUsed = memory.optLong("heapUsed"),
+                heapTotal = memory.optLong("heapTotal"),
+            ),
+            mirror = MirrorDiagnosticsMirror(
+                displayState = mirror.optString("displayState", "unknown"),
+                displayMode = mirror.optString("displayMode", "unknown"),
+                layoutEditMode = mirror.optBoolean("layoutEditMode"),
+                moduleCount = mirror.optInt("moduleCount"),
+                visibleModuleCount = mirror.optInt("visibleModuleCount"),
+                photoOverlayActive = mirror.optBoolean("photoOverlayActive"),
+            ),
+            pairing = MirrorDiagnosticsPairing(
+                controllerConnected = pairing.optBoolean("controllerConnected"),
+                controllerConnectedAt = pairing.optString("controllerConnectedAt").takeIf { it.isNotBlank() },
+            ),
+            latencyMs = latencyMs,
         )
     }
 }

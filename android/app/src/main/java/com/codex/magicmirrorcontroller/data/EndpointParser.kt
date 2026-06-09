@@ -7,6 +7,37 @@ data class ParsedEndpoint(
     val port: Int,
 )
 
+fun isLanOrLocalHost(host: String): Boolean {
+    val normalizedHost = host.trim().trim('[', ']').lowercase()
+
+    if (
+        normalizedHost == "localhost" ||
+        normalizedHost.endsWith(".local") ||
+        normalizedHost == "::1" ||
+        (
+            normalizedHost.contains(":") &&
+                (
+                    normalizedHost.startsWith("fe80:") ||
+                        normalizedHost.startsWith("fc") ||
+                        normalizedHost.startsWith("fd")
+                    )
+            )
+    ) {
+        return true
+    }
+
+    val parts = normalizedHost.split(".").mapNotNull { it.toIntOrNull() }
+    if (parts.size != 4 || parts.any { it !in 0..255 }) {
+        return false
+    }
+
+    return parts[0] == 10 ||
+        parts[0] == 127 ||
+        (parts[0] == 169 && parts[1] == 254) ||
+        (parts[0] == 172 && parts[1] in 16..31) ||
+        (parts[0] == 192 && parts[1] == 168)
+}
+
 fun parseEndpointInput(hostInput: String, portInput: String): ParsedEndpoint? {
     val rawHost = hostInput.trim()
     val fallbackPort = portInput.toIntOrNull()

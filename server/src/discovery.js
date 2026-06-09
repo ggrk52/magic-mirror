@@ -29,7 +29,9 @@ export function createMdnsAdvertiser({
   let service;
 
   try {
-    bonjour = new Bonjour();
+    bonjour = new Bonjour({}, (error) => {
+      logger.warn?.(`mDNS service error: ${error.message}`);
+    });
     service = bonjour.publish({
       name: serviceName,
       type: MIRROR_SERVICE_TYPE,

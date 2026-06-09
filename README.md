@@ -37,7 +37,8 @@ cd "C:\path\to\magic-mirror"
 Минимальный запуск:
 
 ```powershell
-node server/src/index.js
+npm install
+npm start
 ```
 
 Запуск со своими host, port и token:
@@ -46,7 +47,7 @@ node server/src/index.js
 $env:MIRROR_HOST = "0.0.0.0"
 $env:MIRROR_PORT = "8080"
 $env:MIRROR_TOKEN = "change-this-token"
-node server/src/index.js
+npm start
 ```
 
 Значения по умолчанию:
@@ -83,7 +84,7 @@ LAN server address: http://192.168.1.75:8080/
 ipconfig
 ```
 
-В Android-контроллере указывай именно LAN IP машины с сервером, например `192.168.1.75`. Удалённый браузер по LAN не получает токен автоматически; для управления используй Android-приложение или локальный браузер на машине зеркала.
+В Android-контроллере используй авто-поиск или QR-подключение. Удалённый браузер по LAN не получает токен автоматически; для управления используй Android-приложение или локальный браузер на машине зеркала.
 
 ## Запуск тестов
 
@@ -91,6 +92,12 @@ ipconfig
 
 ```powershell
 node --test
+```
+
+Быстрая полная проверка серверной части:
+
+```powershell
+npm run check
 ```
 
 Текущий набор тестов покрывает:
@@ -113,6 +120,7 @@ http://HOST:PORT
 Доступные endpoint:
 
 - `GET /api/health`
+- `GET /api/diagnostics`
 - `GET /api/mirror/state`
 - `POST /api/mirror/display`
 - `POST /api/mirror/mode`
@@ -146,7 +154,7 @@ Invoke-RestMethod `
 ### Пример: получить состояние зеркала
 
 ```powershell
-$headers = @{ Authorization = "Bearer magic-mirror-local-token" }
+$headers = @{ Authorization = "Bearer YOUR_TOKEN" }
 Invoke-RestMethod `
   -Uri "http://127.0.0.1:8080/api/mirror/state" `
   -Headers $headers `
@@ -157,7 +165,7 @@ Invoke-RestMethod `
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -172,7 +180,7 @@ Invoke-RestMethod `
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -187,7 +195,7 @@ Invoke-RestMethod `
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -204,7 +212,7 @@ Invoke-RestMethod `
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -252,10 +260,10 @@ Android-проект находится в папке `android/`.
 
 Для быстрой локальной проверки:
 
-1. Запусти сервер с токеном по умолчанию.
+1. Запусти сервер локально: `npm start`.
 2. Открой `http://127.0.0.1:8080/` в браузере.
 3. В отдельном терминале запусти `node --test`.
-4. Если используешь Android, подключи телефон к той же Wi‑Fi сети и укажи LAN IP сервера и тот же токен.
+4. Если используешь Android, подключи телефон к той же Wi‑Fi сети и подключайся через авто-поиск/QR.
 
 ## Решение проблем
 

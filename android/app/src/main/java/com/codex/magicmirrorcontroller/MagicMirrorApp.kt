@@ -242,7 +242,9 @@ fun MagicMirrorApp(viewModel: MainViewModel) {
                             else -> 2
                         },
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(400)) togetherWith fadeOut(animationSpec = tween(400))
+                            val spec = spring<Float>(dampingRatio = 0.85f, stiffness = 300f)
+                            (fadeIn(animationSpec = spec) + scaleIn(initialScale = 0.95f, animationSpec = spec)) togetherWith 
+                            (fadeOut(animationSpec = spec) + scaleOut(targetScale = 1.05f, animationSpec = spec))
                         },
                         label = "screen-transition"
                     ) { screenIndex ->
@@ -520,8 +522,8 @@ private fun ConnectionScreen(
         item {
             AnimatedVisibility(
                 visible = state.manualExpanded,
-                enter = expandVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
-                exit = shrinkVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
+                enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeOut(animationSpec = tween(200))
             ) {
                 SettingsPanel(title = "Ручной ввод") {
                     ManualForm(
@@ -539,8 +541,8 @@ private fun ConnectionScreen(
         item {
             AnimatedVisibility(
                 visible = state.setupExpanded,
-                enter = expandVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
-                exit = shrinkVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
+                enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeOut(animationSpec = tween(200))
             ) {
                 SettingsPanel(title = "Передача Wi‑Fi") {
                     SetupForm(
@@ -705,6 +707,7 @@ private fun GlassPanel(content: @Composable ColumnScope.() -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f))
             .clip(glassShape)
             .background(
                 Brush.linearGradient(
@@ -770,7 +773,7 @@ private fun MirrorSwitch(
             checked -> SoftGreenWhite.copy(alpha = 0.05f)
             else -> SkeletonGreen.copy(alpha = 0.2f)
         },
-        animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "switch-capsule",
     )
     val border by animateColorAsState(
@@ -779,12 +782,12 @@ private fun MirrorSwitch(
             enabled -> PassiveSage.copy(alpha = 0.14f)
             else -> PassiveSage.copy(alpha = 0.08f)
         },
-        animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "switch-border",
     )
     val scale by animateFloatAsState(
         targetValue = if (checked) 1f else 0.965f,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "switch-scale",
     )
 
@@ -814,7 +817,7 @@ private fun RadarOrb(active: Boolean) {
     val transition = rememberInfiniteTransition(label = "radar")
     val signal by animateFloatAsState(
         targetValue = if (active) 1f else 0.34f,
-        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 200f),
         label = "radar-signal",
     )
     val pulse by transition.animateFloat(
@@ -1399,7 +1402,7 @@ private fun DockItem(
 ) {
     val containerColor by animateColorAsState(
         targetValue = if (active) SoftGreenWhite.copy(alpha = 0.15f) else Color.Transparent,
-        animationSpec = tween(250),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "dock-item-bg"
     )
     val iconColor by animateColorAsState(
@@ -1408,12 +1411,12 @@ private fun DockItem(
             enabled -> MutedSage
             else -> PassiveSage.copy(alpha = 0.4f)
         },
-        animationSpec = tween(200),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "dock-item-icon"
     )
     val scale by animateFloatAsState(
         targetValue = if (active) 1.1f else 1.0f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "dock-item-scale"
     )
 
@@ -1491,10 +1494,10 @@ private fun LayoutCard(
         AnimatedVisibility(
             visible = isOpen,
             enter = expandVertically(
-                animationSpec = tween(350, easing = FastOutSlowInEasing)
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)
             ) + fadeIn(animationSpec = tween(250)),
             exit = shrinkVertically(
-                animationSpec = tween(350, easing = FastOutSlowInEasing)
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)
             ) + fadeOut(animationSpec = tween(250))
         ) {
             Column(
@@ -1604,22 +1607,22 @@ private fun ModuleTile(
     val title = moduleTitleRu[module.id] ?: module.title
     val tileColor by animateColorAsState(
         targetValue = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (module.visible) 0.52f else 0.28f),
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "module-container",
     )
     val tileBorder by animateColorAsState(
         targetValue = if (module.visible) SoftGreenWhite.copy(alpha = 0.14f) else PassiveSage.copy(alpha = 0.12f),
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "module-border",
     )
     val titleColor by animateColorAsState(
         targetValue = if (module.visible) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "module-title",
     )
     val tileScale by animateFloatAsState(
         targetValue = if (module.visible) 1f else 0.985f,
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "module-scale",
     )
 
@@ -2476,8 +2479,8 @@ private fun PresetsCard(
         } else {
             AnimatedVisibility(
                 visible = showCreateDialog,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(200)),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(200))
+                enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeOut(animationSpec = tween(200))
             ) {
                 Column {
                     Spacer(modifier = Modifier.height(8.dp))

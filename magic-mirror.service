@@ -6,8 +6,9 @@ After=network.target NetworkManager.service
 Type=simple
 User=%u
 WorkingDirectory=/home/%u/magic-mirror-orange-pi
-ExecStart=/usr/bin/node server/src/index.js
+ExecStart=/usr/bin/taskset -c 3 /usr/bin/node server/src/index.js
 Restart=on-failure
+Environment="NODE_OPTIONS=--max-old-space-size=256"
 EnvironmentFile=/home/%u/magic-mirror-orange-pi/.env
 
 [Install]

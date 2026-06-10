@@ -1,6 +1,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 
 const execAsync = promisify(exec);
 
@@ -55,10 +56,7 @@ export class HardwareManager {
     } catch (error) {
       // Fallback for non-X11 environments (Framebuffer)
       try {
-        const fbCmd = on 
-          ? "echo 0 > /sys/class/graphics/fb0/blank" 
-          : "echo 1 > /sys/class/graphics/fb0/blank";
-        await execAsync(`sudo ${fbCmd}`);
+        await writeFile("/sys/class/graphics/fb0/blank", on ? "0\n" : "1\n");
       } catch (fbError) {
         throw new Error(`Screen control failed: ${error.message} | FB fallback: ${fbError.message}`);
       }
@@ -69,9 +67,24 @@ export class HardwareManager {
     if (!this.isLinux) return null;
 
     try {
-      // Allwinner usually has thermal zones in /sys/class/thermal/
-      // We search for the first available thermal zone
-      const temp = await readFile("/sys/class/thermal/thermal_zone0/temp", "utf8");
+      if (!this._thermalZonePath) {
+        const zones = await readdir("/sys/class/thermal");
+        for (const zone of zones) {
+          if (zone.startsWith("thermal_zone")) {
+            const type = await readFile(join("/sys/class/thermal", zone, "type"), "utf8");
+            if (type.trim() === "cpu-thermal" || type.trim() === "cpu") {
+              this._thermalZonePath = join("/sys/class/thermal", zone, "temp");
+              break;
+            }
+          }
+        }
+        // Fallback to zone 0 if we couldn't find a specific cpu-thermal
+        if (!this._thermalZonePath) {
+          this._thermalZonePath = "/sys/class/thermal/thermal_zone0/temp";
+        }
+      }
+
+      const temp = await readFile(this._thermalZonePath, "utf8");
       return parseFloat(temp) / 1000; // Convert millidegrees to degrees
     } catch (error) {
       console.error(`HardwareManager: Could not read temperature: ${error.message}`);

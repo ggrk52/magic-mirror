@@ -27,10 +27,19 @@ ResultInactive=yes
 ResultActive=yes
 EOF
 
-# 3. Setup Polkit for gpiod (to allow GPIO access without root)
-echo -e "Configuring GPIO permissions..."
-# Adding user to gpio group if it exists, otherwise we rely on udev rules provided by libgpiod
-sudo usermod -aG gpio $USER_NAME 2>/dev/null || echo "GPIO group not found, skipping..."
+# 3. Setup Hardware Permissions (GPIO & Framebuffer)
+echo -e "Configuring Hardware permissions..."
+# Adding user to groups
+sudo usermod -aG gpio,video $USER_NAME 2>/dev/null || echo "Groups not found, skipping..."
+
+# Creating UDEV rules for GPIO and Framebuffer without sudo
+UDEV_RULES_FILE="/etc/udev/rules.d/99-magic-mirror.rules"
+sudo bash -c "cat > $UDEV_RULES_FILE" <<EOF
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="graphics", KERNEL=="fb0", GROUP="video", MODE="0660"
+EOF
+
+sudo udevadm control --reload-rules && sudo udevadm trigger
 
 # 4. Install Project Dependencies
 echo -e "Installing Node.js project dependencies..."

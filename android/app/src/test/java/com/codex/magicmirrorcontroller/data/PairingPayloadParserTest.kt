@@ -12,7 +12,7 @@ class PairingPayloadParserTest {
             {
               "type": "magic-mirror-pair",
               "version": 1,
-              "token": "secret-token",
+              "token": "mirror-token",
               "port": 8080,
               "hosts": ["192.168.1.75", "[fe80::1]"],
               "service": "Magic Mirror"
@@ -20,7 +20,7 @@ class PairingPayloadParserTest {
             """.trimIndent(),
         )
 
-        assertEquals("secret-token", payload?.token)
+        assertEquals("mirror-token", payload?.token)
         assertEquals(8080, payload?.port)
         assertEquals(listOf("192.168.1.75", "fe80::1"), payload?.hosts)
         assertEquals("Magic Mirror", payload?.service)
@@ -29,6 +29,11 @@ class PairingPayloadParserTest {
     @Test
     fun rejectsNonMagicMirrorPayload() {
         assertNull(parsePairingPayload("""{"type":"other","version":1,"token":"secret"}"""))
+    }
+
+    @Test
+    fun rejectsPairingCodePayload() {
+        assertNull(parsePairingPayload("""{"type":"magic-mirror-pair","version":2,"pairingCode":"secret"}"""))
     }
 
     @Test

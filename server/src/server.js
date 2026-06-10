@@ -7,25 +7,37 @@ import { createMdnsAdvertiser } from "./discovery.js";
 import { createMarketService } from "./markets.js";
 import { createTassNewsService } from "./news.js";
 import { createSetupService } from "./setup.js";
-import { MirrorStore } from "./state.js";
+import { MirrorStore, createFileStateStorage } from "./state.js";
+import { createFileLayoutStorage } from "./layout.js";
 
 const VERSION = "1.0.0";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const publicDir = join(__dirname, "..", "public");
+const layoutFile = join(__dirname, "..", "data", "layout.json");
+const stateFile = join(__dirname, "..", "data", "state.json");
 
 export async function startServer({
   port = Number(process.env.MIRROR_PORT ?? 8080),
   host = process.env.MIRROR_HOST ?? "0.0.0.0",
   token = process.env.MIRROR_TOKEN ?? "magic-mirror-local-token",
-  store = new MirrorStore(),
+  store,
+  layoutStorage = createFileLayoutStorage(layoutFile),
+  stateStorage = createFileStateStorage(stateFile),
   marketService = createMarketService(),
   newsService = createTassNewsService(),
   mdnsPublisher = createMdnsAdvertiser,
   setupMode = process.env.MIRROR_SETUP_MODE === "1",
   setupService,
+  enablePolling = false,
 } = {}) {
+  const mirrorStore = store ?? new MirrorStore(undefined, {
+    initialLayout: await layoutStorage.load(),
+    initialState: await stateStorage.load(),
+    layoutStorage,
+    stateStorage,
+  });
   let activeToken = token;
   const getToken = () => activeToken;
   const setToken = (nextToken) => {
@@ -34,7 +46,7 @@ export async function startServer({
   const setup = setupService ?? createSetupService({ enabled: setupMode, getToken, setToken });
 
   const app = createApp({
-    store,
+    store: mirrorStore,
     publicDir,
     token: getToken,
     version: VERSION,
@@ -52,6 +64,12 @@ export async function startServer({
 
   const address = server.address();
   const actualPort = typeof address === "object" ? address.port : port;
+
+  if (enablePolling) {
+    marketService.startPolling?.();
+    newsService.startPolling?.();
+  }
+
   await setup.startAccessPoint?.().catch((error) => {
     console.warn(`Setup access point was not started: ${error.publicMessage ?? error.message}`);
   });
@@ -63,7 +81,7 @@ export async function startServer({
 
   return {
     server,
-    store,
+    store: mirrorStore,
     get token() {
       return getToken();
     },
@@ -72,6 +90,8 @@ export async function startServer({
     close: async () => {
       await setup.stop?.();
       await mdns.stop();
+      marketService.stop?.();
+      newsService.stop?.();
 
       return new Promise((resolve, reject) => {
         app.closeSockets();

@@ -2,7 +2,7 @@ import { networkInterfaces } from "node:os";
 
 import { startServer } from "./server.js";
 
-const runtime = await startServer();
+const runtime = await startServer({ enablePolling: true });
 
 const host = typeof runtime.address === "object" ? runtime.address.address : "127.0.0.1";
 const port = typeof runtime.address === "object" ? runtime.address.port : process.env.MIRROR_PORT;
@@ -23,3 +23,26 @@ if ((host === "0.0.0.0" || host === "::") && lanUrls.length > 0) {
 }
 
 console.log("Use MIRROR_TOKEN to override the default bearer token.");
+
+// Graceful shutdown — important for systemd on Orange Pi
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+
+  try {
+    if (runtime.close) {
+      await runtime.close();
+    }
+  } catch (error) {
+    console.error("Error during shutdown:", error.message);
+  }
+
+  console.log("Server stopped.");
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

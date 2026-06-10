@@ -1,13 +1,26 @@
 package com.codex.magicmirrorcontroller.ui
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.core.graphics.scale
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import java.io.ByteArrayOutputStream
+import kotlin.math.max
+import kotlin.math.roundToInt
 import com.codex.magicmirrorcontroller.data.ConnectionFormState
 import com.codex.magicmirrorcontroller.data.DiscoveredMirror
+import com.codex.magicmirrorcontroller.data.FirebaseSyncManager
+import com.codex.magicmirrorcontroller.data.LayoutPreset
 import com.codex.magicmirrorcontroller.data.MagicMirrorApi
 import com.codex.magicmirrorcontroller.data.MagicMirrorDiscovery
+import com.codex.magicmirrorcontroller.data.MirrorDiagnostics
 import com.codex.magicmirrorcontroller.data.MirrorModule
+import com.codex.magicmirrorcontroller.data.MirrorModuleLayout
+import com.codex.magicmirrorcontroller.data.MirrorModuleLayoutUpdate
 import com.codex.magicmirrorcontroller.data.MirrorState
 import com.codex.magicmirrorcontroller.data.SavedServerEndpoint
 import com.codex.magicmirrorcontroller.data.SecureTokenStore
@@ -30,15 +43,34 @@ data class MainUiState(
     val setupFormState: SetupFormState = SetupFormState(),
     val discoveredMirrors: List<DiscoveredMirror> = emptyList(),
     val mirrorState: MirrorState? = null,
+    val diagnostics: MirrorDiagnostics? = null,
     val endpointLabel: String = "",
     val isConnected: Boolean = false,
     val isBusy: Boolean = false,
     val isScanning: Boolean = false,
+    val diagnosticsRefreshing: Boolean = false,
     val initialized: Boolean = false,
     val manualExpanded: Boolean = false,
     val setupExpanded: Boolean = false,
     val qrScannerOpen: Boolean = false,
+    val layoutEditorOpen: Boolean = false,
+    val layoutDraft: Map<String, MirrorModuleLayout> = emptyMap(),
+    val layoutSnapshot: Map<String, MirrorModuleLayout> = emptyMap(),
+    val photoDurationMinutes: String = "5",
     val message: String? = null,
+    val currentUserEmail: String? = null,
+    val authErrorMessage: String? = null,
+    val isAuthLoading: Boolean = false,
+    val presets: List<LayoutPreset> = emptyList(),
+    val isFirebaseAvailable: Boolean = true,
+)
+
+private const val MaxPhotoUploadBytes = 6 * 1024 * 1024
+private const val MaxPhotoDimension = 1800
+
+private class PreparedPhoto(
+    val bytes: ByteArray,
+    val mimeType: String,
 )
 
 class MainViewModel(
@@ -46,8 +78,9 @@ class MainViewModel(
     private val repository: ServerConfigRepository,
     private val discovery: MagicMirrorDiscovery,
     private val tokenStore: SecureTokenStore,
+    private val syncManager: FirebaseSyncManager,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(MainUiState())
+    private val _uiState = MutableStateFlow(MainUiState(isFirebaseAvailable = syncManager.isFirebaseAvailable))
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     private var currentConfig: ServerConfig? = null
@@ -71,6 +104,27 @@ class MainViewModel(
                 )
             }
 
+            // Listen to auth changes
+            if (syncManager.isFirebaseAvailable) {
+                syncManager.addAuthStateListener { user ->
+                    _uiState.update { it.copy(currentUserEmail = user?.email) }
+                    if (user != null) {
+                        loadPresets()
+                        // If user logged in and we don't have connection yet, try to load from cloud
+                        if (currentConfig == null) {
+                            viewModelScope.launch {
+                                val cloudConfig = syncManager.fetchEndpointFromCloud()
+                                if (cloudConfig != null) {
+                                    connectWithConfig(cloudConfig, persistConfig = true)
+                                }
+                            }
+                        }
+                    } else {
+                        _uiState.update { it.copy(presets = emptyList()) }
+                    }
+                }
+            }
+
             startDiscovery()
 
             if (savedEndpoint != null && savedToken.isNotBlank()) {
@@ -87,7 +141,7 @@ class MainViewModel(
     }
 
     fun startDiscovery() {
-        _uiState.update { it.copy(isScanning = true, message = "Ищем Magic Mirror рядом...") }
+        _uiState.update { it.copy(isScanning = true, message = "Ищем зеркало рядом...") }
 
         discovery.start(
             onMirrorFound = { mirror ->
@@ -140,6 +194,15 @@ class MainViewModel(
 
     fun updateToken(value: String) {
         _uiState.update { it.copy(formState = it.formState.copy(token = value), message = null) }
+    }
+
+    fun updatePhotoDuration(value: String) {
+        _uiState.update {
+            it.copy(
+                photoDurationMinutes = value.filter(Char::isDigit).take(2),
+                message = null,
+            )
+        }
     }
 
     fun updateSetupHost(value: String) {
@@ -211,7 +274,7 @@ class MainViewModel(
         val payload = parsePairingPayload(rawValue)
 
         if (payload == null) {
-            _uiState.update { it.copy(message = "Это не QR-код Magic Mirror.") }
+            _uiState.update { it.copy(message = "Это не QR-код зеркала.") }
             return
         }
 
@@ -225,27 +288,47 @@ class MainViewModel(
                 it.copy(
                     qrScannerOpen = false,
                     manualExpanded = true,
-                    formState = it.formState.copy(token = payload.token, port = payload.port.toString()),
-                    message = "Токен сохранён, но в QR не было адреса. Введи host вручную.",
+                    formState = it.formState.copy(port = payload.port.toString()),
+                    message = "QR считан, но в нём не было адреса. Введи адрес вручную и отсканируй QR заново.",
                 )
             }
-            tokenStore.saveToken(payload.token)
             return
         }
 
-        tokenStore.saveToken(payload.token)
-        _uiState.update {
-            it.copy(
-                qrScannerOpen = false,
-                formState = it.formState.copy(host = host, port = payload.port.toString(), token = payload.token),
-                message = "QR считан. Подключаюсь к $host:${payload.port}...",
-            )
-        }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isBusy = true,
+                    qrScannerOpen = false,
+                    message = "QR считан. Подключаюсь к зеркалу...",
+                )
+            }
 
-        connectWithConfig(
-            ServerConfig(host = host, port = payload.port, token = payload.token),
-            persistConfig = true,
-        )
+            try {
+                val token = payload.token
+                tokenStore.saveToken(token)
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        qrScannerOpen = false,
+                        formState = it.formState.copy(host = host, port = payload.port.toString(), token = token),
+                        message = "QR считан. Подключаюсь к $host:${payload.port}...",
+                    )
+                }
+
+                connectWithConfig(
+                    ServerConfig(host = host, port = payload.port, token = token),
+                    persistConfig = true,
+                )
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        message = error.message ?: "QR не подтвердился. Обнови QR на зеркале и попробуй снова.",
+                    )
+                }
+            }
+        }
     }
 
     fun submitSetup() {
@@ -253,9 +336,9 @@ class MainViewModel(
         val endpoint = parseEndpointInput(setup.host, setup.port)
         val token = setup.token.trim()
 
-        if (endpoint == null || setup.ssid.isBlank() || token.length < 8) {
+        if (endpoint == null || setup.ssid.isBlank() || token.isBlank()) {
             _uiState.update {
-                it.copy(message = "Для setup нужны адрес setup-сервера, Wi-Fi SSID и токен минимум 8 символов.")
+                it.copy(message = "Для режима настройки нужны адрес сервера, имя Wi-Fi и токен.")
             }
             return
         }
@@ -283,7 +366,7 @@ class MainViewModel(
                 _uiState.update {
                     it.copy(
                         isBusy = false,
-                        message = error.message ?: "Не удалось передать setup-настройки.",
+                        message = error.message ?: "Не удалось передать настройки.",
                     )
                 }
             }
@@ -299,8 +382,7 @@ class MainViewModel(
     fun sendDisplayAction(action: String) {
         runServerAction(
             successMessage = when (action) {
-                "on" -> "Экран включён."
-                "off" -> "Экран выключен."
+                "on", "off" -> null
                 else -> "Перезагрузка отправлена."
             },
         ) { config ->
@@ -311,9 +393,8 @@ class MainViewModel(
     fun setDisplayMode(mode: String) {
         runServerAction(
             successMessage = when (mode) {
-                "gallery" -> "Экран ожидания с картинами включён."
-                "ar" -> "AR-примерка включена."
-                else -> "Виджеты зеркала включены."
+                "gallery", "ar" -> null
+                else -> null
             },
         ) { config ->
             api.setDisplayMode(config, mode)
@@ -322,19 +403,9 @@ class MainViewModel(
 
     fun setModuleVisibility(module: MirrorModule, visible: Boolean) {
         runServerAction(
-            successMessage = if (visible) {
-                "${module.title} теперь виден."
-            } else {
-                "${module.title} скрыт."
-            },
+            successMessage = null,
         ) { config ->
             api.setModuleVisibility(config, module.id, visible)
-        }
-    }
-
-    fun refreshModule(moduleId: String) {
-        runServerAction("Модуль обновлён.") { config ->
-            api.refreshModule(config, moduleId)
         }
     }
 
@@ -344,13 +415,252 @@ class MainViewModel(
         }
     }
 
+    fun openLayoutEditor() {
+        val config = currentConfig
+        val state = _uiState.value.mirrorState
+        if (config == null || state == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
+            return
+        }
+
+        val draft = state.modules.associateBy({ it.id }, { it.layout })
+        _uiState.update {
+            it.copy(
+                layoutEditorOpen = true,
+                layoutDraft = draft,
+                layoutSnapshot = draft,
+                message = null,
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    api.setLayoutEditMode(config, active = true)
+                }
+            }.onSuccess { updatedState ->
+                _uiState.update {
+                    it.copy(mirrorState = updatedState)
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        layoutEditorOpen = false,
+                        layoutDraft = emptyMap(),
+                        layoutSnapshot = emptyMap(),
+                        message = error.message ?: "Не удалось открыть редактор.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun moveLayoutModule(moduleId: String, layout: MirrorModuleLayout) {
+        _uiState.update {
+            it.copy(
+                layoutDraft = it.layoutDraft + (moduleId to clampLayout(layout)),
+                message = null,
+            )
+        }
+    }
+
+    fun cancelLayoutEditor() {
+        closeLayoutEditor()
+    }
+
+    fun saveLayoutEditor() {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
+            return
+        }
+
+        val updates = _uiState.value.layoutDraft.map { (id, layout) ->
+            MirrorModuleLayoutUpdate(id = id, x = layout.x, y = layout.y, w = layout.w, h = layout.h)
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Сохраняем раскладку...") }
+
+            try {
+                val updatedState = withContext(Dispatchers.IO) {
+                    api.updateModuleLayout(config, updates)
+                    api.setLayoutEditMode(config, active = false)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        layoutEditorOpen = false,
+                        layoutDraft = emptyMap(),
+                        layoutSnapshot = emptyMap(),
+                        mirrorState = updatedState,
+                        message = "Раскладка сохранена.",
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        message = error.message ?: "Не удалось сохранить раскладку.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun resetLayoutEditor() {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Сбрасываем раскладку...") }
+
+            try {
+                val updatedState = withContext(Dispatchers.IO) {
+                    api.resetModuleLayout(config)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        mirrorState = updatedState,
+                        layoutDraft = updatedState.modules.associateBy({ it.id }, { it.layout }),
+                        message = "Раскладка сброшена.",
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        message = error.message ?: "Не удалось сбросить раскладку.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun uploadPhoto(context: Context, uri: Uri) {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
+            return
+        }
+
+        val durationMinutes = _uiState.value.photoDurationMinutes.toIntOrNull()?.coerceIn(1, 60)
+        if (durationMinutes == null) {
+            _uiState.update { it.copy(message = "Укажи время показа от 1 до 60 минут.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Готовим фото...") }
+
+            try {
+                val updatedState = withContext(Dispatchers.IO) {
+                    val photo = preparePhotoUpload(context.applicationContext, uri)
+                    api.uploadPhoto(
+                        config = config,
+                        imageBytes = photo.bytes,
+                        mimeType = photo.mimeType,
+                        durationSeconds = durationMinutes * 60,
+                    )
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        isConnected = true,
+                        mirrorState = updatedState,
+                        message = "Фото отправлено на $durationMinutes мин.",
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        message = error.message ?: "Не удалось отправить фото.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun uploadPhotoFromUrl(urlStr: String) {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
+            return
+        }
+
+        val durationMinutes = _uiState.value.photoDurationMinutes.toIntOrNull()?.coerceIn(1, 60)
+        if (durationMinutes == null) {
+            _uiState.update { it.copy(message = "Укажи время показа от 1 до 60 минут.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Загружаем и готовим фото...") }
+
+            try {
+                val updatedState = withContext(Dispatchers.IO) {
+                    val stream = java.net.URL(urlStr).openStream()
+                    val bitmap = BitmapFactory.decodeStream(stream)
+                    val scaled = scaleBitmapIfNeeded(bitmap)
+                    val compressed = compressJpegUnderLimit(scaled)
+                    
+                    if (scaled !== bitmap) {
+                        scaled.recycle()
+                    }
+                    bitmap.recycle()
+
+                    api.uploadPhoto(
+                        config = config,
+                        imageBytes = compressed,
+                        mimeType = "image/jpeg",
+                        durationSeconds = durationMinutes * 60,
+                    )
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        isConnected = true,
+                        mirrorState = updatedState,
+                        message = "Фото отправлено на $durationMinutes мин.",
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        message = error.message ?: "Не удалось отправить фото.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearPhoto() {
+        runServerAction("Фото убрано с зеркала.") { config ->
+            api.clearPhoto(config)
+        }
+    }
+
     fun disconnect() {
         currentConfig = null
         _uiState.update {
             it.copy(
                 isConnected = false,
                 mirrorState = null,
+                diagnostics = null,
                 endpointLabel = "",
+                layoutEditorOpen = false,
+                layoutDraft = emptyMap(),
+                layoutSnapshot = emptyMap(),
                 message = "Можно выбрать другое зеркало или снова сканировать QR.",
             )
         }
@@ -362,6 +672,49 @@ class MainViewModel(
         super.onCleared()
     }
 
+    private fun closeLayoutEditor() {
+        val message = "Редактирование отменено."
+        val config = currentConfig
+        val snapshot = _uiState.value.layoutSnapshot
+
+        _uiState.update {
+            it.copy(
+                layoutEditorOpen = false,
+                layoutDraft = emptyMap(),
+                layoutSnapshot = emptyMap(),
+                message = message,
+            )
+        }
+
+        if (config == null) {
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    if (snapshot.isNotEmpty()) {
+                        api.updateModuleLayout(
+                            config = config,
+                            modules = snapshot.map { (id, layout) ->
+                                MirrorModuleLayoutUpdate(id = id, x = layout.x, y = layout.y, w = layout.w, h = layout.h)
+                            },
+                        )
+                    }
+                    api.setLayoutEditMode(config, active = false)
+                }
+            }.onSuccess { updatedState ->
+                _uiState.update {
+                    it.copy(mirrorState = updatedState)
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(message = error.message ?: "Не удалось восстановить раскладку.")
+                }
+            }
+        }
+    }
+
     private fun connectWithConfig(config: ServerConfig, persistConfig: Boolean) {
         viewModelScope.launch {
             _uiState.update { it.copy(isBusy = true, message = "Проверяем зеркало...", isConnected = false) }
@@ -371,12 +724,18 @@ class MainViewModel(
                     api.checkHealth(config)
                     val fetchedState = api.fetchState(config)
                     api.markPairingComplete(config)
-                    fetchedState
+                    val diagnostics = runCatching { api.fetchDiagnostics(config) }.getOrNull()
+                    fetchedState to diagnostics
                 }
 
                 if (persistConfig) {
                     repository.saveEndpoint(config)
                     tokenStore.saveToken(config.token)
+                    if (syncManager.isFirebaseAvailable && syncManager.currentUser != null) {
+                        launch {
+                            runCatching { syncManager.syncEndpointToCloud(config) }
+                        }
+                    }
                 }
 
                 currentConfig = config
@@ -387,7 +746,8 @@ class MainViewModel(
                         isScanning = false,
                         isConnected = true,
                         endpointLabel = "Подключено к ${config.host}:${config.port}",
-                        mirrorState = state,
+                        mirrorState = state.first,
+                        diagnostics = state.second,
                         message = "Подключение готово.",
                     )
                 }
@@ -398,6 +758,7 @@ class MainViewModel(
                         isBusy = false,
                         isConnected = false,
                         mirrorState = null,
+                        diagnostics = null,
                         endpointLabel = "",
                         message = error.message ?: "Не удалось подключиться к серверу.",
                     )
@@ -407,7 +768,7 @@ class MainViewModel(
     }
 
     private fun runServerAction(
-        successMessage: String,
+        successMessage: String?,
         action: (ServerConfig) -> MirrorState,
     ) {
         val config = currentConfig
@@ -443,12 +804,129 @@ class MainViewModel(
         }
     }
 
+    // --- Authentication Actions ---
+
+    fun signIn(email: String, password: String) {
+        if (!uiState.value.isFirebaseAvailable) return
+        _uiState.update { it.copy(isAuthLoading = true, authErrorMessage = null) }
+        viewModelScope.launch {
+            try {
+                syncManager.signIn(email, password)
+                _uiState.update { it.copy(isAuthLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAuthLoading = false, authErrorMessage = e.message ?: "Ошибка входа") }
+            }
+        }
+    }
+
+    fun signUp(email: String, password: String) {
+        if (!uiState.value.isFirebaseAvailable) return
+        _uiState.update { it.copy(isAuthLoading = true, authErrorMessage = null) }
+        viewModelScope.launch {
+            try {
+                syncManager.signUp(email, password)
+                _uiState.update { it.copy(isAuthLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAuthLoading = false, authErrorMessage = e.message ?: "Ошибка регистрации") }
+            }
+        }
+    }
+
+    fun signOut() {
+        syncManager.signOut()
+        _uiState.update { it.copy(presets = emptyList(), currentUserEmail = null) }
+    }
+
+    fun clearAuthError() {
+        _uiState.update { it.copy(authErrorMessage = null) }
+    }
+
+    // --- Layout Presets Actions ---
+
+    fun saveCurrentLayoutAsPreset(name: String) {
+        val state = uiState.value.mirrorState
+        if (state == null) {
+            _uiState.update { it.copy(message = "Нет подключенного зеркала для сохранения раскладки.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Сохраняем пресет...") }
+            try {
+                syncManager.savePreset(name, state.modules)
+                loadPresets()
+                _uiState.update { it.copy(isBusy = false, message = "Пресет '$name' успешно сохранен.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isBusy = false, message = e.message ?: "Не удалось сохранить пресет.") }
+            }
+        }
+    }
+
+    fun loadPresets() {
+        if (syncManager.currentUser == null) return
+        viewModelScope.launch {
+            try {
+                val list = syncManager.fetchPresets()
+                _uiState.update { it.copy(presets = list) }
+            } catch (e: Exception) {
+                // Fail silently
+            }
+        }
+    }
+
+    fun applyPreset(preset: LayoutPreset) {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к зеркалу.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Применяем пресет '${preset.name}'...") }
+            try {
+                withContext(Dispatchers.IO) {
+                    for (module in preset.modules) {
+                        api.setModuleVisibility(config, module.id, module.visible)
+                    }
+                    val updates = preset.modules.map { module ->
+                        MirrorModuleLayoutUpdate(
+                            id = module.id,
+                            x = module.x,
+                            y = module.y,
+                            w = module.w,
+                            h = module.h
+                        )
+                    }
+                    api.updateModuleLayout(config, updates)
+                }
+                refreshState()
+                _uiState.update { it.copy(isBusy = false, message = "Пресет '${preset.name}' применён.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isBusy = false, message = e.message ?: "Не удалось применить пресет.") }
+            }
+        }
+    }
+
+    fun deletePreset(presetId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Удаляем пресет...") }
+            try {
+                syncManager.deletePreset(presetId)
+                loadPresets()
+                _uiState.update { it.copy(isBusy = false, message = "Пресет удален.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isBusy = false, message = e.message ?: "Не удалось удалить пресет.") }
+            }
+        }
+    }
+
     companion object {
         fun factory(
             api: MagicMirrorApi,
             repository: ServerConfigRepository,
             discovery: MagicMirrorDiscovery,
             tokenStore: SecureTokenStore,
+            syncManager: FirebaseSyncManager,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -458,6 +936,7 @@ class MainViewModel(
                         repository = repository,
                         discovery = discovery,
                         tokenStore = tokenStore,
+                        syncManager = syncManager,
                     ) as T
                 }
             }
@@ -474,4 +953,59 @@ private fun SavedServerEndpoint.toFormState(
         port = port.toString(),
         token = token,
     )
+}
+
+private fun preparePhotoUpload(context: Context, uri: Uri): PreparedPhoto {
+    val resolver = context.contentResolver
+    val mimeType = resolver.getType(uri)?.lowercase().orEmpty()
+    val rawBytes = resolver.openInputStream(uri)?.use { input ->
+        input.readBytes()
+    } ?: throw IllegalArgumentException("Не удалось прочитать фото.")
+
+    if (mimeType in setOf("image/jpeg", "image/png", "image/webp") && rawBytes.size <= MaxPhotoUploadBytes) {
+        return PreparedPhoto(rawBytes, mimeType)
+    }
+
+    val bitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+        ?: throw IllegalArgumentException("Выбери JPEG, PNG или WebP фото.")
+    val scaled = scaleBitmapIfNeeded(bitmap)
+    val compressed = compressJpegUnderLimit(scaled)
+
+    if (scaled !== bitmap) {
+        scaled.recycle()
+    }
+    bitmap.recycle()
+
+    return PreparedPhoto(compressed, "image/jpeg")
+}
+
+private fun scaleBitmapIfNeeded(bitmap: Bitmap): Bitmap {
+    val longestSide = max(bitmap.width, bitmap.height)
+    if (longestSide <= MaxPhotoDimension) {
+        return bitmap
+    }
+
+    val scaleFactor = MaxPhotoDimension.toFloat() / longestSide.toFloat()
+    val width = (bitmap.width * scaleFactor).roundToInt().coerceAtLeast(1)
+    val height = (bitmap.height * scaleFactor).roundToInt().coerceAtLeast(1)
+    return bitmap.scale(width, height, filter = true)
+}
+
+private fun compressJpegUnderLimit(bitmap: Bitmap): ByteArray {
+    val output = ByteArrayOutputStream()
+    var quality = 88
+    var bytes: ByteArray
+
+    do {
+        output.reset()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+        bytes = output.toByteArray()
+        quality -= 8
+    } while (bytes.size > MaxPhotoUploadBytes && quality >= 56)
+
+    if (bytes.size > MaxPhotoUploadBytes) {
+        throw IllegalArgumentException("Фото слишком большое. Выбери снимок до 6 МБ или обрежь его.")
+    }
+
+    return bytes
 }

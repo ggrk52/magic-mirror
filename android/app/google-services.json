@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "235696233498",
+    "project_id": "magic-mirror-dd8fa",
+    "storage_bucket": "magic-mirror-dd8fa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:235696233498:android:8c567bd29da74412c045a3",
+        "android_client_info": {
+          "package_name": "com.codex.magicmirrorcontroller"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlmn0isCf-Dq9v2QcFjVTzHblzairyjLw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

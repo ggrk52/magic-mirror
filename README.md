@@ -1,13 +1,13 @@
-﻿# Magic Mirror LAN Control
+# Magic Mirror LAN Control
 
-Локальный MVP-проект для управления Magic Mirror по сети.
+Локальный проект для управления Magic Mirror по сети.
 
 В проект входят:
 
-- Node.js сервер для локальной сети с небольшим REST API
+- Node.js сервер для локальной сети с REST API
 - браузерный интерфейс зеркала с обновлениями в реальном времени через WebSocket
-- полноэкранные режимы: зеркало, картины в ожидании и AR-примерка одежды
-- Android-приложение-контроллер в папке `android/`
+- полноэкранные режимы: зеркало и картины (галерея) в ожидании
+- Android-приложение-контроллер в папке `android/` (с поддержкой облачной синхронизации Firebase, интерактивной настройки раскладки и круговой карусели картин)
 
 ## Что нужно для запуска
 
@@ -37,7 +37,8 @@ cd "C:\path\to\magic-mirror"
 Минимальный запуск:
 
 ```powershell
-node server/src/index.js
+npm install
+npm start
 ```
 
 Запуск со своими host, port и token:
@@ -46,7 +47,7 @@ node server/src/index.js
 $env:MIRROR_HOST = "0.0.0.0"
 $env:MIRROR_PORT = "8080"
 $env:MIRROR_TOKEN = "change-this-token"
-node server/src/index.js
+npm start
 ```
 
 Значения по умолчанию:
@@ -83,7 +84,28 @@ LAN server address: http://192.168.1.75:8080/
 ipconfig
 ```
 
-В Android-контроллере указывай именно LAN IP машины с сервером, например `192.168.1.75`. Удалённый браузер по LAN не получает токен автоматически; для управления используй Android-приложение или локальный браузер на машине зеркала.
+В Android-контроллере используй авто-поиск или QR-подключение. Удалённый браузер по LAN не получает токен автоматически; для управления используй Android-приложение или локальный браузер на машине зеркала.
+
+## Запуск на Orange Pi / Linux
+
+Для автоматической настройки окружения на одноплатниках (Orange Pi, Raspberry Pi) в корне проекта предусмотрен скрипт:
+
+```powershell
+bash setup_orange_pi.sh
+```
+
+Этот скрипт выполняет следующие шаги:
+- Устанавливает системные зависимости (Node.js, npm, `gpiod`, `network-manager`).
+- Настраивает правила Polkit для управления сетью без `sudo`.
+- Настраивает группы и UDEV-правила для управления экраном (фреймбуфером) и GPIO без прав root.
+- Устанавливает Node.js зависимости (`npm install`).
+- Создает и включает `systemd`-сервис `magic-mirror.service` для автозапуска сервера (с привязкой к ядру процессора и лимитом памяти).
+
+Для ручного старта и просмотра логов сервиса используйте:
+```powershell
+sudo systemctl start magic-mirror.service
+journalctl -u magic-mirror.service -f
+```
 
 ## Запуск тестов
 
@@ -91,6 +113,12 @@ ipconfig
 
 ```powershell
 node --test
+```
+
+Быстрая полная проверка серверной части:
+
+```powershell
+npm run check
 ```
 
 Текущий набор тестов покрывает:
@@ -113,6 +141,7 @@ http://HOST:PORT
 Доступные endpoint:
 
 - `GET /api/health`
+- `GET /api/diagnostics`
 - `GET /api/mirror/state`
 - `POST /api/mirror/display`
 - `POST /api/mirror/mode`
@@ -125,9 +154,6 @@ http://HOST:PORT
 
 - `mirror`: обычный Magic Mirror интерфейс
 - `gallery`: экран ожидания со случайными картинами
-- `ar`: AR-примерка одежды через камеру браузера и MediaPipe Pose Landmarker
-
-AR-режим отслеживает плечи, бёдра и руки, после чего подгоняет слой одежды по масштабу, наклону и положению тела. Для загрузки модели трекинга браузерному зеркалу нужен доступ к интернету.
 
 Все маршруты `/api/*`, кроме `/api/health`, требуют заголовок:
 
@@ -146,7 +172,7 @@ Invoke-RestMethod `
 ### Пример: получить состояние зеркала
 
 ```powershell
-$headers = @{ Authorization = "Bearer magic-mirror-local-token" }
+$headers = @{ Authorization = "Bearer YOUR_TOKEN" }
 Invoke-RestMethod `
   -Uri "http://127.0.0.1:8080/api/mirror/state" `
   -Headers $headers `
@@ -157,7 +183,7 @@ Invoke-RestMethod `
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -172,7 +198,7 @@ Invoke-RestMethod `
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -183,28 +209,13 @@ Invoke-RestMethod `
   -Body '{"mode":"gallery"}'
 ```
 
-### Пример: включить AR-примерку одежды
-
-```powershell
-$headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
-  "Content-Type" = "application/json"
-}
-
-Invoke-RestMethod `
-  -Uri "http://127.0.0.1:8080/api/mirror/mode" `
-  -Headers $headers `
-  -Method POST `
-  -Body '{"mode":"ar"}'
-```
-
-Чтобы вернуться к обычному зеркалу, отправь `{"mode":"mirror"}` на тот же endpoint.
+Чтобы вернуться к обычному зеркалу из галереи, отправьте `{"mode":"mirror"}` на тот же endpoint.
 
 ### Пример: скрыть модуль
 
 ```powershell
 $headers = @{
-  Authorization = "Bearer magic-mirror-local-token"
+  Authorization = "Bearer YOUR_TOKEN"
   "Content-Type" = "application/json"
 }
 
@@ -221,13 +232,12 @@ Android-проект находится в папке `android/`.
 
 Возможности:
 
-- ручной ввод host, port и token
-- сохранение только host и port
-- после перезапуска token нужно вводить заново
-- получение состояния зеркала
-- управление дисплеем
-- включение экрана ожидания со случайными картинами известных художников
-- включение AR-примерки одежды на браузерном зеркале
+- поддержка облачной синхронизации пресетов и настроек подключения через Firebase
+- парящий стеклянный Dock для быстрого переключения режимов
+- интерактивный встроенный редактор раскладки виджетов (раскрывается как папка)
+- выбор картин из круговой карусели с красивой радиальной анимацией
+- авто-поиск зеркал в сети и быстрое сопряжение по сканированию QR-кода
+- управление дисплеем (включение/выключение)
 - управление видимостью модулей и их обновлением
 
 ### Запуск в Android Studio
@@ -252,10 +262,10 @@ Android-проект находится в папке `android/`.
 
 Для быстрой локальной проверки:
 
-1. Запусти сервер с токеном по умолчанию.
+1. Запусти сервер локально: `npm start`.
 2. Открой `http://127.0.0.1:8080/` в браузере.
 3. В отдельном терминале запусти `node --test`.
-4. Если используешь Android, подключи телефон к той же Wi‑Fi сети и укажи LAN IP сервера и тот же токен.
+4. Если используешь Android, подключи телефон к той же Wi‑Fi сети и подключайся через авто-поиск/QR.
 
 ## Решение проблем
 
@@ -284,14 +294,6 @@ Android-проект находится в папке `android/`.
 
 - Bearer token отсутствует или неверный.
 - Используй тот же токен, с которым был запущен сервер.
-
-### AR-примерка не показывает камеру
-
-- Проверь, что у устройства с браузерным зеркалом есть камера.
-- Разреши доступ к камере в браузере.
-- Для локальной проверки открывай `http://127.0.0.1:8080/`; на удалённом `http://192.168.x.x:8080/` некоторые браузеры могут блокировать камеру без HTTPS.
-- Проверь, что устройство может загрузить MediaPipe с `cdn.jsdelivr.net` и модель с `storage.googleapis.com`.
-- Встань в кадр по пояс: для посадки одежды должны быть видны плечи и бёдра.
 
 ### API возвращает `413`
 

@@ -10,7 +10,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -43,9 +43,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -76,12 +79,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
@@ -100,6 +110,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codex.magicmirrorcontroller.data.ConnectionFormState
 import com.codex.magicmirrorcontroller.data.DiscoveredMirror
+import com.codex.magicmirrorcontroller.data.LayoutPreset
 import com.codex.magicmirrorcontroller.data.MirrorModule
 import com.codex.magicmirrorcontroller.data.MirrorModuleLayout
 import com.codex.magicmirrorcontroller.data.MirrorPhotoOverlay
@@ -205,6 +216,8 @@ private val mirrorTypography = Typography(
 fun MagicMirrorApp(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var skipAuth by remember { mutableStateOf(false) }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { viewModel.uploadPhoto(context, it) }
     }
@@ -222,43 +235,72 @@ fun MagicMirrorApp(viewModel: MainViewModel) {
                     containerColor = Color.Transparent,
                     contentWindowInsets = WindowInsets.safeDrawing,
                 ) { padding ->
-                    if (state.isConnected && (state.mirrorState != null)) {
-                        ControlScreen(
-                            padding = padding,
-                            state = state,
-                            onRefresh = viewModel::refreshState,
-                            onDisconnect = viewModel::disconnect,
-                            onDisplayAction = viewModel::sendDisplayAction,
-                            onDisplayModeChange = viewModel::setDisplayMode,
-                            onOpenLayoutEditor = viewModel::openLayoutEditor,
-                            onModuleVisibilityChange = viewModel::setModuleVisibility,
-                            onPhotoDurationChange = viewModel::updatePhotoDuration,
-                            onPickPhoto = { photoPickerLauncher.launch("image/*") },
-                            onClearPhoto = viewModel::clearPhoto,
-                            onRefreshAll = viewModel::refreshAllModules,
-                            onUploadFromUrl = viewModel::uploadPhotoFromUrl,
-                        )
-                    } else {
-                        ConnectionScreen(
-                            padding = padding,
-                            state = state,
-                            onStartDiscovery = viewModel::startDiscovery,
-                            onStopDiscovery = viewModel::stopDiscovery,
-                            onMirrorClick = viewModel::connectToDiscovered,
-                            onOpenQr = viewModel::openQrScanner,
-                            onToggleManual = viewModel::toggleManual,
-                            onToggleSetup = viewModel::toggleSetup,
-                            onHostChange = viewModel::updateHost,
-                            onPortChange = viewModel::updatePort,
-                            onTokenChange = viewModel::updateToken,
-                            onConnect = viewModel::connect,
-                            onSetupHostChange = viewModel::updateSetupHost,
-                            onSetupPortChange = viewModel::updateSetupPort,
-                            onSetupSsidChange = viewModel::updateSetupSsid,
-                            onSetupPasswordChange = viewModel::updateSetupPassword,
-                            onSetupTokenChange = viewModel::updateSetupToken,
-                            onSubmitSetup = viewModel::submitSetup,
-                        )
+                    AnimatedContent(
+                        targetState = when {
+                            state.isFirebaseAvailable && state.currentUserEmail == null && !skipAuth -> 0
+                            state.isConnected && (state.mirrorState != null) -> 1
+                            else -> 2
+                        },
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(400)) togetherWith fadeOut(animationSpec = tween(400))
+                        },
+                        label = "screen-transition"
+                    ) { screenIndex ->
+                        when (screenIndex) {
+                            0 -> AuthScreen(
+                                state = state,
+                                onSignIn = viewModel::signIn,
+                                onSignUp = viewModel::signUp,
+                                onSkip = { skipAuth = true },
+                                onClearError = viewModel::clearAuthError,
+                            )
+                            1 -> ControlScreen(
+                                padding = padding,
+                                state = state,
+                                onRefresh = viewModel::refreshState,
+                                onDisconnect = viewModel::disconnect,
+                                onDisplayAction = viewModel::sendDisplayAction,
+                                onDisplayModeChange = viewModel::setDisplayMode,
+                                onOpenLayoutEditor = viewModel::openLayoutEditor,
+                                onCancelLayoutEditor = viewModel::cancelLayoutEditor,
+                                onSaveLayoutEditor = viewModel::saveLayoutEditor,
+                                onResetLayoutEditor = viewModel::resetLayoutEditor,
+                                onMoveLayoutModule = viewModel::moveLayoutModule,
+                                onModuleVisibilityChange = viewModel::setModuleVisibility,
+                                onPhotoDurationChange = viewModel::updatePhotoDuration,
+                                onPickPhoto = { photoPickerLauncher.launch("image/*") },
+                                onClearPhoto = viewModel::clearPhoto,
+                                onRefreshAll = viewModel::refreshAllModules,
+                                onUploadFromUrl = viewModel::uploadPhotoFromUrl,
+                                onApplyPreset = viewModel::applyPreset,
+                                onDeletePreset = viewModel::deletePreset,
+                                onSavePreset = viewModel::saveCurrentLayoutAsPreset,
+                                onOpenAuth = { skipAuth = false },
+                                onSignOut = viewModel::signOut,
+                            )
+                            else -> ConnectionScreen(
+                                padding = padding,
+                                state = state,
+                                onStartDiscovery = viewModel::startDiscovery,
+                                onStopDiscovery = viewModel::stopDiscovery,
+                                onMirrorClick = viewModel::connectToDiscovered,
+                                onOpenQr = viewModel::openQrScanner,
+                                onToggleManual = viewModel::toggleManual,
+                                onToggleSetup = viewModel::toggleSetup,
+                                onHostChange = viewModel::updateHost,
+                                onPortChange = viewModel::updatePort,
+                                onTokenChange = viewModel::updateToken,
+                                onConnect = viewModel::connect,
+                                onSetupHostChange = viewModel::updateSetupHost,
+                                onSetupPortChange = viewModel::updateSetupPort,
+                                onSetupSsidChange = viewModel::updateSetupSsid,
+                                onSetupPasswordChange = viewModel::updateSetupPassword,
+                                onSetupTokenChange = viewModel::updateSetupToken,
+                                onSubmitSetup = viewModel::submitSetup,
+                                onOpenAuth = { skipAuth = false },
+                                onSignOut = viewModel::signOut,
+                            )
+                        }
                     }
                 }
 
@@ -266,18 +308,6 @@ fun MagicMirrorApp(viewModel: MainViewModel) {
                     QrScannerOverlay(
                         onQrFound = viewModel::handleQrValue,
                         onClose = viewModel::closeQrScanner,
-                    )
-                }
-
-                val editorMirrorState = state.mirrorState
-                if (state.layoutEditorOpen && (editorMirrorState != null)) {
-                    LayoutEditorOverlay(
-                        state = state,
-                        modules = editorMirrorState.modules,
-                        onMove = viewModel::moveLayoutModule,
-                        onSave = viewModel::saveLayoutEditor,
-                        onCancel = viewModel::cancelLayoutEditor,
-                        onReset = viewModel::resetLayoutEditor,
                     )
                 }
             }
@@ -389,6 +419,8 @@ private fun ConnectionScreen(
     onSetupPasswordChange: (String) -> Unit,
     onSetupTokenChange: (String) -> Unit,
     onSubmitSetup: () -> Unit,
+    onOpenAuth: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -406,9 +438,13 @@ private fun ConnectionScreen(
                         manualExpanded = state.manualExpanded,
                         setupExpanded = state.setupExpanded,
                         isBusy = state.isBusy,
+                        currentUserEmail = state.currentUserEmail,
+                        isFirebaseAvailable = state.isFirebaseAvailable,
                         onOpenQr = onOpenQr,
                         onToggleManual = onToggleManual,
                         onToggleSetup = onToggleSetup,
+                        onOpenAuth = onOpenAuth,
+                        onSignOut = onSignOut,
                     )
                 },
             )
@@ -481,8 +517,12 @@ private fun ConnectionScreen(
             }
         }
 
-        if (state.manualExpanded) {
-            item {
+        item {
+            AnimatedVisibility(
+                visible = state.manualExpanded,
+                enter = expandVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
+            ) {
                 SettingsPanel(title = "Ручной ввод") {
                     ManualForm(
                         formState = state.formState,
@@ -496,8 +536,12 @@ private fun ConnectionScreen(
             }
         }
 
-        if (state.setupExpanded) {
-            item {
+        item {
+            AnimatedVisibility(
+                visible = state.setupExpanded,
+                enter = expandVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = tween(350, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
+            ) {
                 SettingsPanel(title = "Передача Wi‑Fi") {
                     SetupForm(
                         formState = state.setupFormState,
@@ -537,11 +581,34 @@ private fun ConnectionSettingsMenu(
     manualExpanded: Boolean,
     setupExpanded: Boolean,
     isBusy: Boolean,
+    currentUserEmail: String?,
+    isFirebaseAvailable: Boolean,
     onOpenQr: () -> Unit,
     onToggleManual: () -> Unit,
     onToggleSetup: () -> Unit,
+    onOpenAuth: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     OverflowMenu(enabled = !isBusy) { close ->
+        if (isFirebaseAvailable) {
+            if (currentUserEmail != null) {
+                DropdownMenuItem(
+                    text = { Text("Выйти (${currentUserEmail.take(12)}...)") },
+                    onClick = {
+                        close()
+                        onSignOut()
+                    },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text("Войти в аккаунт") },
+                    onClick = {
+                        close()
+                        onOpenAuth()
+                    },
+                )
+            }
+        }
         DropdownMenuItem(
             text = { Text("QR") },
             onClick = {
@@ -1010,89 +1077,156 @@ private fun ControlScreen(
     onDisplayAction: (String) -> Unit,
     onDisplayModeChange: (String) -> Unit,
     onOpenLayoutEditor: () -> Unit,
+    onCancelLayoutEditor: () -> Unit,
+    onSaveLayoutEditor: () -> Unit,
+    onResetLayoutEditor: () -> Unit,
+    onMoveLayoutModule: (String, MirrorModuleLayout) -> Unit,
     onModuleVisibilityChange: (MirrorModule, Boolean) -> Unit,
     onPhotoDurationChange: (String) -> Unit,
     onPickPhoto: () -> Unit,
     onClearPhoto: () -> Unit,
     onRefreshAll: () -> Unit,
     onUploadFromUrl: (String) -> Unit,
+    onApplyPreset: (LayoutPreset) -> Unit,
+    onDeletePreset: (String) -> Unit,
+    onSavePreset: (String) -> Unit,
+    onOpenAuth: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     val mirrorState = state.mirrorState ?: return
 
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(padding),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(padding)
     ) {
-        item {
-            HeaderBlock(
-                kicker = "ЗЕРКАЛО",
-                title = "Пульт",
-                subtitle = state.endpointLabel,
-                action = {
-                    ControlSettingsMenu(
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 100.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                HeaderBlock(
+                    kicker = "ЗЕРКАЛО",
+                    title = "Пульт",
+                    subtitle = state.endpointLabel,
+                    action = {
+                        ControlSettingsMenu(
+                            isBusy = state.isBusy,
+                            currentUserEmail = state.currentUserEmail,
+                            isFirebaseAvailable = state.isFirebaseAvailable,
+                            onRefresh = onRefresh,
+                            onDisconnect = onDisconnect,
+                            onReload = { onDisplayAction("reload") },
+                            onRefreshAll = onRefreshAll,
+                            onOpenAuth = onOpenAuth,
+                            onSignOut = onSignOut,
+                        )
+                    },
+                )
+            }
+
+            item {
+                StatusCard(
+                    mirrorState = mirrorState,
+                    isBusy = state.isBusy,
+                    onDisplayAction = onDisplayAction,
+                )
+            }
+
+            if (mirrorState.displayMode == "mirror") {
+                item {
+                    LayoutCard(
+                        state = state,
                         isBusy = state.isBusy,
-                        onRefresh = onRefresh,
-                        onDisconnect = onDisconnect,
-                        onReload = { onDisplayAction("reload") },
-                        onRefreshAll = onRefreshAll,
+                        onOpen = onOpenLayoutEditor,
+                        onClose = onCancelLayoutEditor,
+                        onMove = onMoveLayoutModule,
+                        onSave = onSaveLayoutEditor,
+                        onReset = onResetLayoutEditor,
                     )
-                },
-            )
+                }
+
+                item {
+                    PresetsCard(
+                        presets = state.presets,
+                        isBusy = state.isBusy,
+                        isUserLoggedIn = state.currentUserEmail != null,
+                        onSavePreset = onSavePreset,
+                        onApplyPreset = onApplyPreset,
+                        onDeletePreset = onDeletePreset,
+                        onOpenAuth = onOpenAuth,
+                    )
+                }
+
+                item {
+                    ModuleGrid(
+                        modules = mirrorState.modules,
+                        isBusy = state.isBusy,
+                        onToggle = onModuleVisibilityChange,
+                    )
+                }
+            } else if (mirrorState.displayMode == "gallery") {
+                item {
+                    GalleryCarousel(
+                        durationMinutes = state.photoDurationMinutes,
+                        photoOverlay = mirrorState.photoOverlay,
+                        isBusy = state.isBusy,
+                        serverHost = state.formState.host,
+                        serverPort = state.formState.port,
+                        onDurationChange = onPhotoDurationChange,
+                        onPickPhoto = onPickPhoto,
+                        onClearPhoto = onClearPhoto,
+                        onSelectServerImage = onUploadFromUrl
+                    )
+                }
+            }
         }
 
-        item {
-            StatusCard(
-                mirrorState = mirrorState,
-                isBusy = state.isBusy,
-                onDisplayAction = onDisplayAction,
-                onDisplayModeChange = onDisplayModeChange,
-            )
-        }
-
-        item {
-            LayoutCard(
-                isBusy = state.isBusy,
-                onOpen = onOpenLayoutEditor,
-            )
-        }
-
-        item {
-            ModuleGrid(
-                modules = mirrorState.modules,
-                isBusy = state.isBusy,
-                onToggle = onModuleVisibilityChange,
-            )
-        }
-
-        item {
-            GalleryCarousel(
-                durationMinutes = state.photoDurationMinutes,
-                photoOverlay = mirrorState.photoOverlay,
-                isBusy = state.isBusy,
-                serverHost = state.formState.host,
-                serverPort = state.formState.port,
-                onDurationChange = onPhotoDurationChange,
-                onPickPhoto = onPickPhoto,
-                onClearPhoto = onClearPhoto,
-                onSelectServerImage = onUploadFromUrl
-            )
-        }
-
+        FloatingDock(
+            currentMode = mirrorState.displayMode,
+            displayEnabled = mirrorState.displayState != "off",
+            isBusy = state.isBusy,
+            onDisplayModeChange = onDisplayModeChange,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 20.dp)
+        )
     }
 }
 
 @Composable
 private fun ControlSettingsMenu(
     isBusy: Boolean,
+    currentUserEmail: String?,
+    isFirebaseAvailable: Boolean,
     onRefresh: () -> Unit,
     onDisconnect: () -> Unit,
     onReload: () -> Unit,
     onRefreshAll: () -> Unit,
+    onOpenAuth: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     OverflowMenu(enabled = !isBusy) { close ->
+        if (isFirebaseAvailable) {
+            if (currentUserEmail != null) {
+                DropdownMenuItem(
+                    text = { Text("Выйти (${currentUserEmail.take(12)}...)") },
+                    onClick = {
+                        close()
+                        onSignOut()
+                    },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text("Войти в аккаунт") },
+                    onClick = {
+                        close()
+                        onOpenAuth()
+                    },
+                )
+            }
+        }
         DropdownMenuItem(
             text = { Text("Обновить") },
             onClick = {
@@ -1129,7 +1263,6 @@ private fun StatusCard(
     mirrorState: MirrorState,
     isBusy: Boolean,
     onDisplayAction: (String) -> Unit,
-    onDisplayModeChange: (String) -> Unit,
 ) {
     val displayEnabled = mirrorState.displayState != "off"
 
@@ -1153,112 +1286,276 @@ private fun StatusCard(
                 enabled = !isBusy,
             )
         }
+    }
+}
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ModeButton(
-                label = "Зеркало",
-                active = mirrorState.displayMode == "mirror",
-                enabled = !isBusy && displayEnabled,
+@Composable
+private fun MirrorIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val width = size.width
+        val height = size.height
+        // Draw mirror frame
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(width * 0.15f, height * 0.1f),
+            size = Size(width * 0.7f, height * 0.8f),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        // Draw diagonal reflection line
+        drawLine(
+            color = tint.copy(alpha = 0.6f),
+            start = Offset(width * 0.35f, height * 0.75f),
+            end = Offset(width * 0.65f, height * 0.25f),
+            strokeWidth = 1.5f.dp.toPx()
+        )
+    }
+}
+
+@Composable
+private fun GalleryIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val width = size.width
+        val height = size.height
+        // Draw picture frame
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(width * 0.1f, height * 0.15f),
+            size = Size(width * 0.8f, height * 0.7f),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        // Draw mountain peaks inside
+        val path = Path().apply {
+            moveTo(width * 0.2f, height * 0.7f)
+            lineTo(width * 0.45f, height * 0.45f)
+            lineTo(width * 0.6f, height * 0.6f)
+            lineTo(width * 0.7f, height * 0.5f)
+            lineTo(width * 0.8f, height * 0.7f)
+            close()
+        }
+        drawPath(
+            path = path,
+            color = tint,
+            style = Stroke(width = 1.5f.dp.toPx(), join = StrokeJoin.Round)
+        )
+        // Draw small sun
+        drawCircle(
+            color = tint,
+            center = Offset(width * 0.65f, height * 0.35f),
+            radius = 2.dp.toPx()
+        )
+    }
+}
+
+@Composable
+private fun FloatingDock(
+    currentMode: String,
+    displayEnabled: Boolean,
+    isBusy: Boolean,
+    onDisplayModeChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(32.dp),
+        color = Color(0xFF16161D).copy(alpha = 0.8f),
+        border = BorderStroke(1.dp, SoftGreenWhite.copy(alpha = 0.15f)),
+        modifier = modifier
+            .wrapContentSize()
+            .shadow(16.dp, RoundedCornerShape(32.dp)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val enabled = !isBusy && displayEnabled
+            
+            // Mirror Mode Button
+            DockItem(
+                active = currentMode == "mirror",
+                enabled = enabled,
                 onClick = { onDisplayModeChange("mirror") },
+                icon = { tint -> MirrorIcon(tint = tint) }
             )
-            ModeButton(
-                label = "Картины",
-                active = mirrorState.displayMode == "gallery",
-                enabled = !isBusy && displayEnabled,
+
+            // Gallery Mode Button
+            DockItem(
+                active = currentMode == "gallery",
+                enabled = enabled,
                 onClick = { onDisplayModeChange("gallery") },
-            )
-            ModeButton(
-                label = "Примерка",
-                active = mirrorState.displayMode == "ar",
-                enabled = !isBusy && displayEnabled,
-                onClick = { onDisplayModeChange("ar") },
+                icon = { tint -> GalleryIcon(tint = tint) }
             )
         }
     }
 }
 
 @Composable
-private fun ModeButton(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val container by animateColorAsState(
-        targetValue = if (active) {
-            SoftGreenWhite.copy(alpha = 0.16f)
-        } else {
-            SkeletonGreen.copy(alpha = if (enabled) 0.42f else 0.24f)
-        },
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "mode-container",
+private fun DockItem(
+    active: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable (Color) -> Unit,
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (active) SoftGreenWhite.copy(alpha = 0.15f) else Color.Transparent,
+        animationSpec = tween(250),
+        label = "dock-item-bg"
     )
-    val border by animateColorAsState(
+    val iconColor by animateColorAsState(
         targetValue = when {
-            active -> SoftGreenWhite.copy(alpha = 0.42f)
-            enabled -> PassiveSage.copy(alpha = 0.24f)
-            else -> PassiveSage.copy(alpha = 0.12f)
+            active -> SoftGreenWhite
+            enabled -> MutedSage
+            else -> PassiveSage.copy(alpha = 0.4f)
         },
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "mode-border",
-    )
-    val content by animateColorAsState(
-        targetValue = when {
-            active -> MaterialTheme.colorScheme.onSurface
-            enabled -> MaterialTheme.colorScheme.onSurfaceVariant
-            else -> PassiveSage.copy(alpha = 0.62f)
-        },
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "mode-content",
+        animationSpec = tween(200),
+        label = "dock-item-icon"
     )
     val scale by animateFloatAsState(
-        targetValue = if (active) 1f else 0.975f,
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "mode-scale",
+        targetValue = if (active) 1.1f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "dock-item-scale"
     )
 
-    Surface(
-        shape = RoundedCornerShape(999.dp),
-        color = container,
-        border = BorderStroke(1.dp, border),
-        modifier = Modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clickable(enabled = enabled, onClick = onClick),
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            color = content,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+        Box(
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(containerColor)
+                .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            icon(iconColor)
+        }
+
+        // Active indicator dot
+        Box(
+            modifier = Modifier
+                .size(4.dp)
+                .clip(CircleShape)
+                .background(if (active) SoftGreenWhite else Color.Transparent)
         )
     }
 }
 
 @Composable
 private fun LayoutCard(
+    state: MainUiState,
     isBusy: Boolean,
     onOpen: () -> Unit,
+    onClose: () -> Unit,
+    onMove: (String, MirrorModuleLayout) -> Unit,
+    onSave: () -> Unit,
+    onReset: () -> Unit,
 ) {
+    val isOpen = state.layoutEditorOpen
+    val mirrorState = state.mirrorState ?: return
+
     GlassPanel {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !isBusy) {
+                    if (isOpen) onClose() else onOpen()
+                }
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Раскладка виджетов",
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                onClick = onOpen,
-                enabled = !isBusy,
-                colors = mirrorButtonColors(),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Править")
+                Text(
+                    text = if (isOpen) "▼" else "▶",
+                    color = SoftGreenWhite,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "Раскладка виджетов",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isOpen,
+            enter = expandVertically(
+                animationSpec = tween(350, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(250)),
+            exit = shrinkVertically(
+                animationSpec = tween(350, easing = FastOutSlowInEasing)
+            ) + fadeOut(animationSpec = tween(250))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Двигайте блоки на превью ниже для настройки расположения:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(9f / 16f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black, DeepGreen.copy(alpha = 0.72f), Color.Black),
+                            ),
+                        )
+                        .border(1.dp, VelvetPurple.copy(alpha = 0.52f), RoundedCornerShape(24.dp)),
+                ) {
+                    val previewWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                    val previewHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+                    mirrorState.modules.forEach { module ->
+                        val layout = state.layoutDraft[module.id] ?: module.layout
+                        LayoutEditorModuleChip(
+                            module = module,
+                            layout = layout,
+                            previewWidthPx = previewWidthPx,
+                            previewHeightPx = previewHeightPx,
+                            onMove = onMove,
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onReset,
+                        enabled = !isBusy,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Сбросить")
+                    }
+                    Button(
+                        onClick = onSave,
+                        enabled = !isBusy,
+                        modifier = Modifier.weight(1f),
+                        colors = mirrorButtonColors()
+                    ) {
+                        Text("Сохранить")
+                    }
+                }
             }
         }
     }
@@ -1860,25 +2157,85 @@ private fun GalleryCarousel(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        val listState = rememberLazyListState()
         LazyRow(
+            state = listState,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 50.dp, top = 20.dp, start = 120.dp, end = 120.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            items(galleryImages) { imageUrl ->
-                GalleryCard(
-                    imageUrl = imageUrl,
-                    enabled = !isBusy,
-                    onClick = {
-                        onSelectServerImage(imageUrl)
-                    }
-                )
+            itemsIndexed(galleryImages) { index, imageUrl ->
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                            if (itemInfo != null) {
+                                val viewPortWidth = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
+                                if (viewPortWidth > 0) {
+                                    val viewportCenter = viewPortWidth / 2f
+                                    val itemCenter = itemInfo.offset + (itemInfo.size / 2f)
+                                    val maxDistance = viewportCenter
+                                    val distanceFromCenter = (itemCenter - viewportCenter) / maxDistance
+                                    val clampedDistance = distanceFromCenter.coerceIn(-1.5f, 1.5f)
+                                    
+                                    val scale = 1f - 0.18f * (clampedDistance * clampedDistance)
+                                    scaleX = scale
+                                    scaleY = scale
+                                    
+                                    rotationZ = clampedDistance * 12f
+                                    
+                                    val radiusPx = 50.dp.toPx()
+                                    translationY = radiusPx * (clampedDistance * clampedDistance)
+                                    
+                                    alpha = (1f - 0.4f * (clampedDistance * clampedDistance)).coerceIn(0f, 1f)
+                                }
+                            }
+                        }
+                ) {
+                    GalleryCard(
+                        imageUrl = imageUrl,
+                        enabled = !isBusy,
+                        onClick = {
+                            onSelectServerImage(imageUrl)
+                        }
+                    )
+                }
             }
 
             item {
-                AddPhotoCard(
-                    enabled = !isBusy,
-                    onClick = onPickPhoto
-                )
+                val index = galleryImages.size
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                            if (itemInfo != null) {
+                                val viewPortWidth = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
+                                if (viewPortWidth > 0) {
+                                    val viewportCenter = viewPortWidth / 2f
+                                    val itemCenter = itemInfo.offset + (itemInfo.size / 2f)
+                                    val maxDistance = viewportCenter
+                                    val distanceFromCenter = (itemCenter - viewportCenter) / maxDistance
+                                    val clampedDistance = distanceFromCenter.coerceIn(-1.5f, 1.5f)
+                                    
+                                    val scale = 1f - 0.18f * (clampedDistance * clampedDistance)
+                                    scaleX = scale
+                                    scaleY = scale
+                                    
+                                    rotationZ = clampedDistance * 12f
+                                    
+                                    val radiusPx = 50.dp.toPx()
+                                    translationY = radiusPx * (clampedDistance * clampedDistance)
+                                    
+                                    alpha = (1f - 0.4f * (clampedDistance * clampedDistance)).coerceIn(0f, 1f)
+                                }
+                            }
+                        }
+                ) {
+                    AddPhotoCard(
+                        enabled = !isBusy,
+                        onClick = onPickPhoto
+                    )
+                }
             }
         }
 
@@ -1942,6 +2299,285 @@ private fun AddPhotoCard(enabled: Boolean, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("С телефона", color = Color.White, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthScreen(
+    state: MainUiState,
+    onSignIn: (String, String) -> Unit,
+    onSignUp: (String, String) -> Unit,
+    onSkip: () -> Unit,
+    onClearError: () -> Unit,
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isRegisterMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isRegisterMode) {
+        onClearError()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassPanel {
+            Text(
+                text = if (isRegisterMode) "Регистрация" else "Вход в аккаунт",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Light,
+            )
+            Text(
+                text = "Сохраняйте сопряжения с зеркалами и пресеты расположения виджетов в облаке.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email", color = MutedSage) },
+                singleLine = true,
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = SoftGreenWhite,
+                    unfocusedTextColor = SoftGreenWhite,
+                    focusedBorderColor = SoftGreenWhite,
+                    unfocusedBorderColor = SoftGreenWhite.copy(alpha = 0.2f),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Пароль", color = MutedSage) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = SoftGreenWhite,
+                    unfocusedTextColor = SoftGreenWhite,
+                    focusedBorderColor = SoftGreenWhite,
+                    unfocusedBorderColor = SoftGreenWhite.copy(alpha = 0.2f),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            state.authErrorMessage?.let { error ->
+                Text(
+                    text = error,
+                    color = Color.Red.copy(alpha = 0.86f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = {
+                    if (email.isNotBlank() && password.isNotBlank()) {
+                        if (isRegisterMode) {
+                            onSignUp(email.trim(), password)
+                        } else {
+                            onSignIn(email.trim(), password)
+                        }
+                    }
+                },
+                enabled = !state.isAuthLoading && email.isNotBlank() && password.isNotBlank(),
+                colors = mirrorButtonColors(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = if (state.isAuthLoading) "Загрузка..." else if (isRegisterMode) "Создать аккаунт" else "Войти",
+                )
+            }
+
+            TextButton(
+                onClick = { isRegisterMode = !isRegisterMode },
+                enabled = !state.isAuthLoading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = if (isRegisterMode) "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрироваться",
+                    color = MutedSage,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            OutlinedButton(
+                onClick = onSkip,
+                enabled = !state.isAuthLoading,
+                colors = mirrorOutlinedButtonColors(),
+                border = mirrorOutlinedButtonBorder(enabled = !state.isAuthLoading),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Продолжить без аккаунта (локально)")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PresetsCard(
+    presets: List<LayoutPreset>,
+    isBusy: Boolean,
+    isUserLoggedIn: Boolean,
+    onSavePreset: (String) -> Unit,
+    onApplyPreset: (LayoutPreset) -> Unit,
+    onDeletePreset: (String) -> Unit,
+    onOpenAuth: () -> Unit,
+) {
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newPresetName by remember { mutableStateOf("") }
+
+    GlassPanel {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Пресеты макетов",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            
+            if (isUserLoggedIn && !showCreateDialog) {
+                TextButton(
+                    onClick = { showCreateDialog = true },
+                    enabled = !isBusy,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text("+ Добавить", color = SoftGreenWhite, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+
+        if (!isUserLoggedIn) {
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedButton(
+                onClick = onOpenAuth,
+                colors = mirrorOutlinedButtonColors(),
+                border = mirrorOutlinedButtonBorder(enabled = true),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Войти для сохранения пресетов")
+            }
+        } else {
+            AnimatedVisibility(
+                visible = showCreateDialog,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(200))
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = newPresetName,
+                            onValueChange = { newPresetName = it },
+                            placeholder = { Text("Имя", color = PassiveSage) },
+                            singleLine = true,
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = SoftGreenWhite,
+                                unfocusedTextColor = SoftGreenWhite,
+                                focusedBorderColor = SoftGreenWhite,
+                                unfocusedBorderColor = SoftGreenWhite.copy(alpha = 0.2f),
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Button(
+                            onClick = {
+                                if (newPresetName.isNotBlank()) {
+                                    onSavePreset(newPresetName)
+                                    newPresetName = ""
+                                    showCreateDialog = false
+                                }
+                            },
+                            colors = mirrorButtonColors(),
+                            enabled = !isBusy && newPresetName.isNotBlank(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        ) {
+                            Text("ОК")
+                        }
+                        TextButton(
+                            onClick = { showCreateDialog = false },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        ) {
+                            Text("Отмена", color = MutedSage)
+                        }
+                    }
+                }
+            }
+
+            if (presets.isEmpty()) {
+                if (!showCreateDialog) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Нет сохраненных пресетов.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PassiveSage,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(presets, key = { it.id }) { preset ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(PineGreen)
+                                .border(BorderStroke(1.dp, SoftGreenWhite.copy(alpha = 0.08f)), RoundedCornerShape(14.dp))
+                                .clickable(enabled = !isBusy) { onApplyPreset(preset) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Column {
+                                    Text(
+                                        text = preset.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = SoftGreenWhite,
+                                    )
+                                    Text(
+                                        text = "${preset.modules.size} модулей",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
+                                        color = MutedSage,
+                                    )
+                                }
+                                Text(
+                                    text = "✕",
+                                    color = Color.Red.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier
+                                        .clickable(enabled = !isBusy) { onDeletePreset(preset.id) }
+                                        .padding(4.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

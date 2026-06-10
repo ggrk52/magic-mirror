@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.codex.magicmirrorcontroller.data.FirebaseSyncManager
 import com.codex.magicmirrorcontroller.data.MagicMirrorApi
 import com.codex.magicmirrorcontroller.data.MagicMirrorDiscovery
 import com.codex.magicmirrorcontroller.data.SecureTokenStore
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
                     repository = ServerConfigRepository(applicationContext),
                     discovery = MagicMirrorDiscovery(applicationContext),
                     tokenStore = SecureTokenStore(applicationContext),
+                    syncManager = FirebaseSyncManager(),
                 ),
             )
 

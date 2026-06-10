@@ -13,6 +13,8 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import com.codex.magicmirrorcontroller.data.ConnectionFormState
 import com.codex.magicmirrorcontroller.data.DiscoveredMirror
+import com.codex.magicmirrorcontroller.data.FirebaseSyncManager
+import com.codex.magicmirrorcontroller.data.LayoutPreset
 import com.codex.magicmirrorcontroller.data.MagicMirrorApi
 import com.codex.magicmirrorcontroller.data.MagicMirrorDiscovery
 import com.codex.magicmirrorcontroller.data.MirrorDiagnostics
@@ -56,6 +58,11 @@ data class MainUiState(
     val layoutSnapshot: Map<String, MirrorModuleLayout> = emptyMap(),
     val photoDurationMinutes: String = "5",
     val message: String? = null,
+    val currentUserEmail: String? = null,
+    val authErrorMessage: String? = null,
+    val isAuthLoading: Boolean = false,
+    val presets: List<LayoutPreset> = emptyList(),
+    val isFirebaseAvailable: Boolean = true,
 )
 
 private const val MaxPhotoUploadBytes = 6 * 1024 * 1024
@@ -71,8 +78,9 @@ class MainViewModel(
     private val repository: ServerConfigRepository,
     private val discovery: MagicMirrorDiscovery,
     private val tokenStore: SecureTokenStore,
+    private val syncManager: FirebaseSyncManager,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(MainUiState())
+    private val _uiState = MutableStateFlow(MainUiState(isFirebaseAvailable = syncManager.isFirebaseAvailable))
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     private var currentConfig: ServerConfig? = null
@@ -94,6 +102,27 @@ class MainViewModel(
                         "Запускаю авто-поиск зеркала в сети."
                     },
                 )
+            }
+
+            // Listen to auth changes
+            if (syncManager.isFirebaseAvailable) {
+                syncManager.addAuthStateListener { user ->
+                    _uiState.update { it.copy(currentUserEmail = user?.email) }
+                    if (user != null) {
+                        loadPresets()
+                        // If user logged in and we don't have connection yet, try to load from cloud
+                        if (currentConfig == null) {
+                            viewModelScope.launch {
+                                val cloudConfig = syncManager.fetchEndpointFromCloud()
+                                if (cloudConfig != null) {
+                                    connectWithConfig(cloudConfig, persistConfig = true)
+                                }
+                            }
+                        }
+                    } else {
+                        _uiState.update { it.copy(presets = emptyList()) }
+                    }
+                }
             }
 
             startDiscovery()
@@ -702,6 +731,11 @@ class MainViewModel(
                 if (persistConfig) {
                     repository.saveEndpoint(config)
                     tokenStore.saveToken(config.token)
+                    if (syncManager.isFirebaseAvailable && syncManager.currentUser != null) {
+                        launch {
+                            runCatching { syncManager.syncEndpointToCloud(config) }
+                        }
+                    }
                 }
 
                 currentConfig = config
@@ -770,12 +804,129 @@ class MainViewModel(
         }
     }
 
+    // --- Authentication Actions ---
+
+    fun signIn(email: String, password: String) {
+        if (!uiState.value.isFirebaseAvailable) return
+        _uiState.update { it.copy(isAuthLoading = true, authErrorMessage = null) }
+        viewModelScope.launch {
+            try {
+                syncManager.signIn(email, password)
+                _uiState.update { it.copy(isAuthLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAuthLoading = false, authErrorMessage = e.message ?: "Ошибка входа") }
+            }
+        }
+    }
+
+    fun signUp(email: String, password: String) {
+        if (!uiState.value.isFirebaseAvailable) return
+        _uiState.update { it.copy(isAuthLoading = true, authErrorMessage = null) }
+        viewModelScope.launch {
+            try {
+                syncManager.signUp(email, password)
+                _uiState.update { it.copy(isAuthLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAuthLoading = false, authErrorMessage = e.message ?: "Ошибка регистрации") }
+            }
+        }
+    }
+
+    fun signOut() {
+        syncManager.signOut()
+        _uiState.update { it.copy(presets = emptyList(), currentUserEmail = null) }
+    }
+
+    fun clearAuthError() {
+        _uiState.update { it.copy(authErrorMessage = null) }
+    }
+
+    // --- Layout Presets Actions ---
+
+    fun saveCurrentLayoutAsPreset(name: String) {
+        val state = uiState.value.mirrorState
+        if (state == null) {
+            _uiState.update { it.copy(message = "Нет подключенного зеркала для сохранения раскладки.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Сохраняем пресет...") }
+            try {
+                syncManager.savePreset(name, state.modules)
+                loadPresets()
+                _uiState.update { it.copy(isBusy = false, message = "Пресет '$name' успешно сохранен.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isBusy = false, message = e.message ?: "Не удалось сохранить пресет.") }
+            }
+        }
+    }
+
+    fun loadPresets() {
+        if (syncManager.currentUser == null) return
+        viewModelScope.launch {
+            try {
+                val list = syncManager.fetchPresets()
+                _uiState.update { it.copy(presets = list) }
+            } catch (e: Exception) {
+                // Fail silently
+            }
+        }
+    }
+
+    fun applyPreset(preset: LayoutPreset) {
+        val config = currentConfig
+        if (config == null) {
+            _uiState.update { it.copy(message = "Сначала подключись к зеркалу.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Применяем пресет '${preset.name}'...") }
+            try {
+                withContext(Dispatchers.IO) {
+                    for (module in preset.modules) {
+                        api.setModuleVisibility(config, module.id, module.visible)
+                    }
+                    val updates = preset.modules.map { module ->
+                        MirrorModuleLayoutUpdate(
+                            id = module.id,
+                            x = module.x,
+                            y = module.y,
+                            w = module.w,
+                            h = module.h
+                        )
+                    }
+                    api.updateModuleLayout(config, updates)
+                }
+                refreshState()
+                _uiState.update { it.copy(isBusy = false, message = "Пресет '${preset.name}' применён.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isBusy = false, message = e.message ?: "Не удалось применить пресет.") }
+            }
+        }
+    }
+
+    fun deletePreset(presetId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Удаляем пресет...") }
+            try {
+                syncManager.deletePreset(presetId)
+                loadPresets()
+                _uiState.update { it.copy(isBusy = false, message = "Пресет удален.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isBusy = false, message = e.message ?: "Не удалось удалить пресет.") }
+            }
+        }
+    }
+
     companion object {
         fun factory(
             api: MagicMirrorApi,
             repository: ServerConfigRepository,
             discovery: MagicMirrorDiscovery,
             tokenStore: SecureTokenStore,
+            syncManager: FirebaseSyncManager,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -785,6 +936,7 @@ class MainViewModel(
                         repository = repository,
                         discovery = discovery,
                         tokenStore = tokenStore,
+                        syncManager = syncManager,
                     ) as T
                 }
             }

@@ -1,11 +1,11 @@
 {
   "version": 1,
   "state": {
-    "displayState": "on",
-    "displayMode": "mirror",
+    "displayState": "off",
+    "displayMode": "gallery",
     "modulesVisibility": {
       "clock": true,
-      "weather": true,
+      "weather": false,
       "markets": true,
       "calendar": true,
       "news": true

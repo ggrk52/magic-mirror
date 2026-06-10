@@ -6,9 +6,13 @@ export function rotateNewsHeadline(onRender) {
   if (!newsHeadline) newsHeadline = document.querySelector("#newsHeadline");
   if (!newsHeadline) return;
 
-  headlineIndex = (headlineIndex + 1) % newsItems.length;
-  newsHeadline.textContent = newsItems[headlineIndex];
-  onRender?.();
+  newsHeadline.classList.add("news-hidden");
+  setTimeout(() => {
+    headlineIndex = (headlineIndex + 1) % newsItems.length;
+    newsHeadline.textContent = newsItems[headlineIndex];
+    onRender?.();
+    newsHeadline.classList.remove("news-hidden");
+  }, 300);
 }
 
 export function renderNews(items, onRender) {
@@ -21,9 +25,13 @@ export function renderNews(items, onRender) {
     newsItems = ["ТАСС: новости временно недоступны"];
   }
 
-  headlineIndex = 0;
-  newsHeadline.textContent = newsItems[headlineIndex];
-  onRender?.();
+  newsHeadline.classList.add("news-hidden");
+  setTimeout(() => {
+    headlineIndex = 0;
+    newsHeadline.textContent = newsItems[headlineIndex];
+    onRender?.();
+    newsHeadline.classList.remove("news-hidden");
+  }, 300);
 }
 
 export async function loadTassNews(wsToken, onRender) {

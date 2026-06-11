@@ -273,7 +273,7 @@ fun MagicMirrorApp(viewModel: MainViewModel) {
                                 onPickPhoto = { photoPickerLauncher.launch("image/*") },
                                 onClearPhoto = viewModel::clearPhoto,
                                 onRefreshAll = viewModel::refreshAllModules,
-                                onUploadFromUrl = viewModel::uploadPhotoFromUrl,
+                                onUploadFromUrl = { url -> viewModel.uploadPhotoFromUrl(context, url) },
                                 onApplyPreset = viewModel::applyPreset,
                                 onDeletePreset = viewModel::deletePreset,
                                 onSavePreset = viewModel::saveCurrentLayoutAsPreset,
@@ -2264,6 +2264,18 @@ private fun GalleryCarousel(
 
 @Composable
 private fun GalleryCard(imageUrl: String, enabled: Boolean, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val imageRequest = remember(imageUrl) {
+        val filename = imageUrl.substringAfterLast('/')
+        val fallbackAssetPath = "file:///android_asset/gallery/$filename"
+        coil.request.ImageRequest.Builder(context)
+            .data(imageUrl)
+            .error(fallbackAssetPath)
+            .fallback(fallbackAssetPath)
+            .crossfade(true)
+            .build()
+    }
+
     Surface(
         modifier = Modifier
             .size(140.dp)
@@ -2273,7 +2285,7 @@ private fun GalleryCard(imageUrl: String, enabled: Boolean, onClick: () -> Unit)
         color = Color(0xFF1E1E24)
     ) {
         AsyncImage(
-            model = imageUrl,
+            model = imageRequest,
             contentDescription = "Gallery Image",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()

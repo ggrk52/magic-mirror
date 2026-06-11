@@ -589,7 +589,7 @@ class MainViewModel(
         }
     }
 
-    fun uploadPhotoFromUrl(urlStr: String) {
+    fun uploadPhotoFromUrl(context: Context, urlStr: String) {
         val config = currentConfig
         if (config == null) {
             _uiState.update { it.copy(message = "Сначала подключись к серверу.") }
@@ -607,8 +607,23 @@ class MainViewModel(
 
             try {
                 val updatedState = withContext(Dispatchers.IO) {
-                    val stream = java.net.URL(urlStr).openStream()
-                    val bitmap = BitmapFactory.decodeStream(stream)
+                    val filename = urlStr.substringAfterLast('/')
+                    val isStandard = filename in setOf(
+                        "bedroom.jpg",
+                        "self-portrait.jpg",
+                        "water-lilies.jpg",
+                        "normandy-train.jpg",
+                        "two-sisters.jpg",
+                        "woman-piano.jpg",
+                        "basket-apples.jpg",
+                        "marseille-bay.jpg"
+                    )
+                    val stream = if (urlStr.contains("/gallery/") && isStandard) {
+                        context.assets.open("gallery/$filename")
+                    } else {
+                        java.net.URL(urlStr).openStream()
+                    }
+                    val bitmap = stream.use { BitmapFactory.decodeStream(it) }
                     val scaled = scaleBitmapIfNeeded(bitmap)
                     val compressed = compressJpegUnderLimit(scaled)
                     
